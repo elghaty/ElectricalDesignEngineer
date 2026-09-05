@@ -5,7 +5,11 @@ plugins {
     id("org.jetbrains.kotlin.kapt")
 }
 
-android {
+kotlin {
+    jvmToolchain(17)
+}
+
+android { {
     namespace = "com.electricaldesignengineer.app"
     compileSdk = 35
 
