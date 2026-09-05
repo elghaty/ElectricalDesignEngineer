@@ -49,6 +49,12 @@ fun ElectricalDesignApp() {
             }
         }
 
+        "Short Circuit" -> {
+            ShortCircuitScreen {
+                selectedModule = null
+            }
+        }
+
         else -> {
             MainScreen { module ->
                 selectedModule = module
