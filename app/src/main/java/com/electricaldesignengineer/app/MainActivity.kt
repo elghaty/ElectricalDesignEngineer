@@ -5,7 +5,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 
 class MainActivity : ComponentActivity() {
 
@@ -35,6 +39,63 @@ fun ElectricalDesignApp() {
             LoadCalculationScreen {
                 selectedModule = null
             }
+        }
+
+        "Cable Sizing" -> {
+            CableSizingScreen {
+                selectedModule = null
+            }
+        }
+
+        "Voltage Drop" -> {
+            VoltageDropScreen {
+                selectedModule = null
+            }
+        }
+
+        "Short Circuit" -> {
+            ShortCircuitScreen {
+                selectedModule = null
+            }
+        }
+
+        "Breaker Selection" -> {
+            BreakerSelectionScreen {
+                selectedModule = null
+            }
+        }
+
+        "Transformer" -> {
+            TransformerSizingScreen {
+                selectedModule = null
+            }
+        }
+
+        "Generator" -> {
+            GeneratorSizingScreen {
+                selectedModule = null
+            }
+        }
+
+        "Power Factor" -> {
+            PowerFactorCorrectionScreen {
+                selectedModule = null
+            }
+        }
+
+        "Earthing" -> {
+            EarthingScreen {
+                selectedModule = null
+            }
+        }
+
+        else -> {
+            MainScreen { module ->
+                selectedModule = module
+            }
+        }
+    }
+}            }
         }
 
         "Cable Sizing" -> {
