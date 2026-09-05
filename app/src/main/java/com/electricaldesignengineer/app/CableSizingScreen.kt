@@ -17,29 +17,29 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.sqrt
 
 data class CableOption(
-    val size: Int,
+    val size: Double,
     val ampacity: Double
 )
 
 private val cableOptions = listOf(
-    CableOption(1, 14.0),
-    CableOption(1, 18.0),
+    CableOption(1.0, 14.0),
+    CableOption(1.5, 18.0),
     CableOption(2.5, 24.0),
-    CableOption(4, 32.0),
-    CableOption(6, 41.0),
-    CableOption(10, 57.0),
-    CableOption(16, 76.0),
-    CableOption(25, 101.0),
-    CableOption(35, 125.0),
-    CableOption(50, 150.0),
-    CableOption(70, 192.0),
-    CableOption(95, 232.0),
-    CableOption(120, 269.0),
-    CableOption(150, 309.0),
-    CableOption(185, 353.0),
-    CableOption(240, 415.0),
-    CableOption(300, 473.0),
-    CableOption(400, 557.0)
+    CableOption(4.0, 32.0),
+    CableOption(6.0, 41.0),
+    CableOption(10.0, 57.0),
+    CableOption(16.0, 76.0),
+    CableOption(25.0, 101.0),
+    CableOption(35.0, 125.0),
+    CableOption(50.0, 150.0),
+    CableOption(70.0, 192.0),
+    CableOption(95.0, 232.0),
+    CableOption(120.0, 269.0),
+    CableOption(150.0, 309.0),
+    CableOption(185.0, 353.0),
+    CableOption(240.0, 415.0),
+    CableOption(300.0, 473.0),
+    CableOption(400.0, 557.0)
 )
 
 @Composable
