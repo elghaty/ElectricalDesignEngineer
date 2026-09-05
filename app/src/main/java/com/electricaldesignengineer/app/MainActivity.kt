@@ -29,45 +29,57 @@ fun ElectricalDesignApp() {
         mutableStateOf<DesignModule?>(null)
     }
 
-when (selectedModule?.title) {
+    when (selectedModule?.title) {
 
-    "Load Calculation" -> {
-        LoadCalculationScreen {
-            selectedModule = null
+        "Load Calculation" -> {
+            LoadCalculationScreen {
+                selectedModule = null
+            }
+        }
+
+        "Cable Sizing" -> {
+            CableSizingScreen {
+                selectedModule = null
+            }
+        }
+
+        "Voltage Drop" -> {
+            VoltageDropScreen {
+                selectedModule = null
+            }
+        }
+
+        "Short Circuit" -> {
+            ShortCircuitScreen {
+                selectedModule = null
+            }
+        }
+
+        "Breaker Selection" -> {
+            BreakerSelectionScreen {
+                selectedModule = null
+            }
+        }
+
+        "Transformer" -> {
+            TransformerSizingScreen {
+                selectedModule = null
+            }
+        }
+
+        "Generator" -> {
+            GeneratorSizingScreen {
+                selectedModule = null
+            }
+        }
+
+        else -> {
+            MainScreen { module ->
+                selectedModule = module
+            }
         }
     }
-
-    "Cable Sizing" -> {
-        CableSizingScreen {
-            selectedModule = null
-        }
-    }
-
-    "Voltage Drop" -> {
-        VoltageDropScreen {
-            selectedModule = null
-        }
-    }
-
-    "Short Circuit" -> {
-        ShortCircuitScreen {
-            selectedModule = null
-        }
-    }
-
-    "Breaker Selection" -> {
-        BreakerSelectionScreen {
-            selectedModule = null
-        }
-    }
-
-    "Transformer" -> {
-        TransformerSizingScreen {
-            selectedModule = null
-        }
-    }
-
-    else -> {
+}
         MainScreen { module ->
             selectedModule = module
         }
