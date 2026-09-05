@@ -89,6 +89,12 @@ fun ElectricalDesignApp() {
             }
         }
 
+        "Load Schedule" -> {
+            LoadScheduleScreen {
+                selectedModule = null
+            }
+        }
+
         else -> {
             MainScreen { module ->
                 selectedModule = module
