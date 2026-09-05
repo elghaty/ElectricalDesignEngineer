@@ -1,58 +1,43 @@
 package com.electricaldesignengineer.app
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlin.math.sqrt
-
-data class CableOption(
-    val size: Double,
-    val ampacity: Double
-)
-
-private val cableOptions = listOf(
-    CableOption(1.0, 14.0),
-    CableOption(1.5, 18.0),
-    CableOption(2.5, 24.0),
-    CableOption(4.0, 32.0),
-    CableOption(6.0, 41.0),
-    CableOption(10.0, 57.0),
-    CableOption(16.0, 76.0),
-    CableOption(25.0, 101.0),
-    CableOption(35.0, 125.0),
-    CableOption(50.0, 150.0),
-    CableOption(70.0, 192.0),
-    CableOption(95.0, 232.0),
-    CableOption(120.0, 269.0),
-    CableOption(150.0, 309.0),
-    CableOption(185.0, 353.0),
-    CableOption(240.0, 415.0),
-    CableOption(300.0, 473.0),
-    CableOption(400.0, 557.0)
-)
 
 @Composable
 fun CableSizingScreen(
     onBack: () -> Unit = {}
 ) {
 
-    var designCurrent by remember { mutableStateOf("") }
-    var length by remember { mutableStateOf("") }
-    var voltage by remember { mutableStateOf("400") }
-    var powerFactor by remember { mutableStateOf("0.9") }
+    var designCurrent by remember {
+        mutableStateOf(
+            if (ElectricalCalculator.designCurrentA > 0)
+                "%.2f".format(ElectricalCalculator.designCurrentA)
+            else ""
+        )
+    }
 
-    var isThreePhase by remember { mutableStateOf(true) }
+    var length by remember { mutableStateOf("30") }
+
+    var voltage by remember {
+        mutableStateOf(
+            ElectricalCalculator.voltageV.toString()
+        )
+    }
+
+    var powerFactor by remember {
+        mutableStateOf(
+            ElectricalCalculator.powerFactor.toString()
+        )
+    }
+
+    var isThreePhase by remember {
+        mutableStateOf(ElectricalCalculator.isThreePhase)
+    }
 
     var result by remember { mutableStateOf("") }
 
@@ -65,7 +50,8 @@ fun CableSizingScreen(
     ) {
 
         Text(
-            text = "Cable Sizing"
+            text = "Cable Sizing",
+            style = MaterialTheme.typography.headlineSmall
         )
 
         OutlinedTextField(
@@ -85,14 +71,7 @@ fun CableSizingScreen(
         OutlinedTextField(
             value = voltage,
             onValueChange = { voltage = it },
-            label = {
-                Text(
-                    if (isThreePhase)
-                        "Voltage L-L (V)"
-                    else
-                        "Voltage (V)"
-                )
-            },
+            label = { Text("Voltage (V)") },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -109,18 +88,14 @@ fun CableSizingScreen(
         ) {
 
             Button(
-                onClick = {
-                    isThreePhase = true
-                },
+                onClick = { isThreePhase = true },
                 modifier = Modifier.weight(1f)
             ) {
                 Text("3 Phase")
             }
 
             Button(
-                onClick = {
-                    isThreePhase = false
-                },
+                onClick = { isThreePhase = false },
                 modifier = Modifier.weight(1f)
             ) {
                 Text("1 Phase")
@@ -130,90 +105,82 @@ fun CableSizingScreen(
         Button(
             onClick = {
 
-                val current = designCurrent.toDoubleOrNull() ?: 0.0
-                val cableLength = length.toDoubleOrNull() ?: 0.0
-                val v = voltage.toDoubleOrNull() ?: 0.0
+                val current =
+                    designCurrent.toDoubleOrNull() ?: 0.0
 
-                if (current <= 0 || cableLength <= 0 || v <= 0) {
+                val cableLength =
+                    length.toDoubleOrNull() ?: 0.0
+
+                val v =
+                    voltage.toDoubleOrNull() ?: 0.0
+
+                val pf =
+                    powerFactor.toDoubleOrNull() ?: 0.90
+
+                if (
+                    current <= 0 ||
+                    cableLength <= 0 ||
+                    v <= 0
+                ) {
+
                     result = "Please enter valid values."
-                    return@Button
-                }
-
-                val requiredCable = cableOptions.firstOrNull {
-                    it.ampacity >= current
-                }
-
-                if (requiredCable == null) {
-                    result = "No cable size available for this current."
-                    return@Button
-                }
-
-                /*
-                 * Simplified voltage-drop check.
-                 *
-                 * This is an initial engineering model.
-                 * Final cable selection will later use:
-                 * - installation method
-                 * - correction factors
-                 * - conductor temperature
-                 * - grouping
-                 * - cable construction
-                 * - IEC tables
-                 */
-
-                val resistanceOhmPerKm =
-                    18.1 / requiredCable.size
-
-                val voltageDrop = if (isThreePhase) {
-
-                    sqrt(3.0) *
-                            current *
-                            (resistanceOhmPerKm / 1000.0) *
-                            cableLength
 
                 } else {
 
-                    2.0 *
-                            current *
-                            (resistanceOhmPerKm / 1000.0) *
-                            cableLength
+                    val calculation =
+                        ElectricalCalculator.selectCable(
+                            currentA = current,
+                            lengthM = cableLength,
+                            voltage = v,
+                            pf = pf,
+                            threePhase = isThreePhase
+                        )
+
+                    result = """
+                        Recommended Cable
+                        -------------------------
+                        
+                        Cross Section:
+                        %.1f mm²
+                        
+                        Approx. Ampacity:
+                        %.1f A
+                        
+                        Voltage Drop:
+                        %.2f V
+                        
+                        Voltage Drop:
+                        %.2f %%
+                        
+                        Status:
+                        %s
+                    """.trimIndent().format(
+                        calculation.sizeMm2,
+                        calculation.ampacityA,
+                        calculation.voltageDropV,
+                        calculation.voltageDropPercent,
+                        calculation.status
+                    )
                 }
-
-                val voltageDropPercent =
-                    voltageDrop / v * 100.0
-
-                result = """
-                    Recommended Cable
-                    -------------------------
-                    Cross Section: ${requiredCable.size} mm²
-                    Approx. Ampacity: %.1f A
-                    
-                    Voltage Drop: %.2f V
-                    Voltage Drop: %.2f %%
-                    
-                    Current: %.2f A
-                    Length: %.1f m
-                """.trimIndent().format(
-                    requiredCable.ampacity,
-                    voltageDrop,
-                    voltageDropPercent,
-                    current,
-                    cableLength
-                )
 
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Calculate Cable")
+            Text("Calculate & Save Cable")
         }
 
         if (result.isNotEmpty()) {
 
+            HorizontalDivider()
+
             Text(
                 text = result,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
+                style = MaterialTheme.typography.bodyLarge
+            )
+
+            Text(
+                text = "✓ Cable result saved for Voltage Drop / Protection",
+                style = MaterialTheme.typography.labelLarge
             )
         }
 
