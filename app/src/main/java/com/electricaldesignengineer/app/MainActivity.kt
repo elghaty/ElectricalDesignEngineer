@@ -73,6 +73,40 @@ fun ElectricalDesignApp() {
             }
         }
 
+        "Power Factor" -> {
+            PowerFactorCorrectionScreen {
+                selectedModule = null
+            }
+        }
+
+        else -> {
+            MainScreen { module ->
+                selectedModule = module
+            }
+        }
+    }
+}
+            }
+        }
+
+        "Breaker Selection" -> {
+            BreakerSelectionScreen {
+                selectedModule = null
+            }
+        }
+
+        "Transformer" -> {
+            TransformerSizingScreen {
+                selectedModule = null
+            }
+        }
+
+        "Generator" -> {
+            GeneratorSizingScreen {
+                selectedModule = null
+            }
+        }
+
         else -> {
             MainScreen { module ->
                 selectedModule = module
