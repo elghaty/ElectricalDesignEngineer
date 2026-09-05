@@ -39,6 +39,14 @@ fun ElectricalDesignApp() {
             )
         }
 
+        "Cable Sizing" -> {
+            CableSizingScreen(
+                onBack = {
+                    selectedModule = null
+                }
+            )
+        }
+
         else -> {
             MainScreen(
                 onModuleSelected = { module ->
