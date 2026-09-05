@@ -1,20 +1,12 @@
 package com.electricaldesignengineer.app
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlin.math.sqrt
 
 @Composable
 fun LoadCalculationScreen(
@@ -23,11 +15,11 @@ fun LoadCalculationScreen(
     var loadName by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("1") }
     var power by remember { mutableStateOf("") }
-    var powerFactor by remember { mutableStateOf("0.9") }
-    var diversityFactor by remember { mutableStateOf("1.0") }
+    var powerFactor by remember { mutableStateOf("0.90") }
+    var demandFactor by remember { mutableStateOf("1.00") }
     var voltage by remember { mutableStateOf("400") }
-    var isThreePhase by remember { mutableStateOf(true) }
 
+    var isThreePhase by remember { mutableStateOf(true) }
     var result by remember { mutableStateOf("") }
 
     Column(
@@ -39,7 +31,8 @@ fun LoadCalculationScreen(
     ) {
 
         Text(
-            text = "Load Calculation"
+            text = "Load Calculation",
+            style = MaterialTheme.typography.headlineSmall
         )
 
         OutlinedTextField(
@@ -71,9 +64,9 @@ fun LoadCalculationScreen(
         )
 
         OutlinedTextField(
-            value = diversityFactor,
-            onValueChange = { diversityFactor = it },
-            label = { Text("Diversity Factor") },
+            value = demandFactor,
+            onValueChange = { demandFactor = it },
+            label = { Text("Demand Factor") },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -83,7 +76,7 @@ fun LoadCalculationScreen(
             label = {
                 Text(
                     if (isThreePhase)
-                        "Voltage (V L-L)"
+                        "Voltage L-L (V)"
                     else
                         "Voltage (V)"
                 )
@@ -95,6 +88,7 @@ fun LoadCalculationScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+
             Button(
                 onClick = { isThreePhase = true },
                 modifier = Modifier.weight(1f)
@@ -116,52 +110,58 @@ fun LoadCalculationScreen(
                 val q = quantity.toDoubleOrNull() ?: 0.0
                 val p = power.toDoubleOrNull() ?: 0.0
                 val pf = powerFactor.toDoubleOrNull() ?: 0.0
-                val df = diversityFactor.toDoubleOrNull() ?: 1.0
+                val df = demandFactor.toDoubleOrNull() ?: 1.0
                 val v = voltage.toDoubleOrNull() ?: 0.0
 
-                val connectedKW = q * p
-                val demandKW = connectedKW * df
-                val kva = if (pf > 0) demandKW / pf else 0.0
-
-                val current = if (isThreePhase) {
-                    if (v > 0) {
-                        (kva * 1000) / (sqrt(3.0) * v)
-                    } else {
-                        0.0
-                    }
-                } else {
-                    if (v > 0) {
-                        (kva * 1000) / v
-                    } else {
-                        0.0
-                    }
-                }
+                val calculation =
+                    ElectricalCalculator.calculateLoad(
+                        quantity = q,
+                        powerKWPerLoad = p,
+                        demandFactor = df,
+                        pf = pf,
+                        voltage = v,
+                        threePhase = isThreePhase
+                    )
 
                 result = """
                     Load: ${if (loadName.isBlank()) "Unnamed Load" else loadName}
                     
-                    Connected Load: %.2f kW
-                    Demand Load: %.2f kW
-                    Apparent Power: %.2f kVA
-                    Design Current: %.2f A
+                    Connected Load:
+                    %.2f kW
+                    
+                    Demand Load:
+                    %.2f kW
+                    
+                    Apparent Power:
+                    %.2f kVA
+                    
+                    Design Current:
+                    %.2f A
                 """.trimIndent().format(
-                    connectedKW,
-                    demandKW,
-                    kva,
-                    current
+                    calculation.connectedKW,
+                    calculation.demandKW,
+                    calculation.kva,
+                    calculation.currentA
                 )
+
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Calculate")
+            Text("Calculate & Send to System")
         }
 
         if (result.isNotEmpty()) {
+
+            HorizontalDivider()
+
             Text(
                 text = result,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
+                style = MaterialTheme.typography.bodyLarge
+            )
+
+            Text(
+                text = "✓ Results saved to the central calculation engine",
+                style = MaterialTheme.typography.labelLarge
             )
         }
 
