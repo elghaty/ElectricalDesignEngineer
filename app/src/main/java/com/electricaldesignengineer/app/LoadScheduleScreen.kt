@@ -1,26 +1,19 @@
 package com.electricaldesignengineer.app
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlin.math.sqrt
 
-data class LoadScheduleItem(
+data class ScheduleLoad(
     val name: String,
     val quantity: Int,
     val powerKW: Double,
-    val powerFactor: Double,
+    val pf: Double,
     val demandFactor: Double
 )
 
@@ -28,63 +21,35 @@ data class LoadScheduleItem(
 fun LoadScheduleScreen(
     onBack: () -> Unit = {}
 ) {
-
-    var loadName by remember { mutableStateOf("") }
+    var name by remember { mutableStateOf("") }
     var quantity by remember { mutableStateOf("1") }
-    var powerKW by remember { mutableStateOf("") }
-    var powerFactor by remember { mutableStateOf("0.9") }
-    var demandFactor by remember { mutableStateOf("1.0") }
+    var power by remember { mutableStateOf("") }
+    var pf by remember { mutableStateOf("0.90") }
+    var demandFactor by remember { mutableStateOf("1.00") }
 
-    var loads by remember {
-        mutableStateOf(listOf<LoadScheduleItem>())
+    val loads = remember {
+        mutableStateListOf<ScheduleLoad>()
     }
 
     var result by remember { mutableStateOf("") }
 
-    val totalConnectedKW = loads.sumOf {
-        it.quantity * it.powerKW
-    }
-
-    val totalDemandKW = loads.sumOf {
-        it.quantity * it.powerKW * it.demandFactor
-    }
-
-    val totalKVA = loads.sumOf {
-        if (it.powerFactor > 0) {
-            (it.quantity * it.powerKW * it.demandFactor) /
-                    it.powerFactor
-        } else {
-            0.0
-        }
-    }
-
-    val overallPF =
-        if (totalKVA > 0)
-            totalDemandKW / totalKVA
-        else
-            0.0
-
-    val totalCurrent =
-        if (totalKVA > 0) {
-            (totalKVA * 1000.0) /
-                    (sqrt(3.0) * 400.0)
-        } else {
-            0.0
-        }
-
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
 
-        Text("Load Schedule")
+        Text(
+            "Load Schedule",
+            style = MaterialTheme.typography.headlineSmall
+        )
 
         OutlinedTextField(
-            value = loadName,
-            onValueChange = { loadName = it },
-            label = { Text("Load Name") },
+            value = name,
+            onValueChange = { name = it },
+            label = { Text("Load Description") },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -96,15 +61,15 @@ fun LoadScheduleScreen(
         )
 
         OutlinedTextField(
-            value = powerKW,
-            onValueChange = { powerKW = it },
-            label = { Text("Power per Load (kW)") },
+            value = power,
+            onValueChange = { power = it },
+            label = { Text("Power / Unit (kW)") },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
-            value = powerFactor,
-            onValueChange = { powerFactor = it },
+            value = pf,
+            onValueChange = { pf = it },
             label = { Text("Power Factor") },
             modifier = Modifier.fillMaxWidth()
         )
@@ -119,125 +84,171 @@ fun LoadScheduleScreen(
         Button(
             onClick = {
 
-                val q = quantity.toIntOrNull() ?: 0
-                val p = powerKW.toDoubleOrNull() ?: 0.0
-                val pf = powerFactor.toDoubleOrNull() ?: 0.0
-                val df = demandFactor.toDoubleOrNull() ?: 0.0
+                val q =
+                    quantity.toIntOrNull() ?: 0
+
+                val p =
+                    power.toDoubleOrNull() ?: 0.0
+
+                val powerFactor =
+                    pf.toDoubleOrNull() ?: 0.0
+
+                val df =
+                    demandFactor.toDoubleOrNull() ?: 1.0
 
                 if (
-                    loadName.isBlank() ||
                     q <= 0 ||
                     p <= 0 ||
-                    pf <= 0 ||
-                    pf > 1 ||
-                    df <= 0 ||
-                    df > 1
+                    powerFactor <= 0
                 ) {
-                    result = "Please enter valid values."
-                    return@Button
+                    result = "Please enter valid load data."
+                } else {
+
+                    loads.add(
+                        ScheduleLoad(
+                            name = if (name.isBlank())
+                                "Load ${loads.size + 1}"
+                            else name,
+                            quantity = q,
+                            powerKW = p,
+                            pf = powerFactor,
+                            demandFactor = df.coerceIn(0.0, 1.0)
+                        )
+                    )
+
+                    name = ""
+                    power = ""
+
+                    result = "Load added successfully."
                 }
 
-                val newLoad = LoadScheduleItem(
-                    name = loadName,
-                    quantity = q,
-                    powerKW = p,
-                    powerFactor = pf,
-                    demandFactor = df
-                )
-
-                loads = loads + newLoad
-
-                loadName = ""
-                quantity = "1"
-                powerKW = ""
-                powerFactor = "0.9"
-                demandFactor = "1.0"
-
-                result = "Load added successfully."
             },
             modifier = Modifier.fillMaxWidth()
         ) {
             Text("Add Load")
         }
 
-        Text(
-            text = "Load Schedule Items: ${loads.size}"
-        )
+        Button(
+            onClick = {
 
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-
-            items(loads) { load ->
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(6.dp)
-                ) {
-
-                    Text(
-                        "${load.name} | Qty: ${load.quantity}"
-                    )
-
-                    Text(
-                        "Power: %.2f kW | PF: %.2f | DF: %.2f".format(
-                            load.powerKW,
-                            load.powerFactor,
-                            load.demandFactor
-                        )
-                    )
+                if (loads.isEmpty()) {
+                    result = "No loads in schedule."
+                    return@Button
                 }
-            }
+
+                var connected = 0.0
+                var demand = 0.0
+                var apparent = 0.0
+
+                loads.forEach { load ->
+
+                    val connectedLoad =
+                        load.quantity * load.powerKW
+
+                    val demandLoad =
+                        connectedLoad *
+                                load.demandFactor
+
+                    val kva =
+                        if (load.pf > 0)
+                            demandLoad / load.pf
+                        else 0.0
+
+                    connected += connectedLoad
+                    demand += demandLoad
+                    apparent += kva
+                }
+
+                val overallPF =
+                    if (apparent > 0)
+                        demand / apparent
+                    else 0.0
+
+                val current =
+                    if (ElectricalCalculator.voltageV > 0)
+                        apparent * 1000.0 /
+                                (sqrt(3.0) *
+                                        ElectricalCalculator.voltageV)
+                    else 0.0
+
+                ElectricalCalculator.connectedKW = connected
+                ElectricalCalculator.demandKW = demand
+                ElectricalCalculator.totalKVA = apparent
+                ElectricalCalculator.powerFactor = overallPF
+                ElectricalCalculator.designCurrentA = current
+
+                result = """
+                    LOAD SCHEDULE SUMMARY
+                    -------------------------
+                    
+                    Number of Load Items:
+                    ${loads.size}
+                    
+                    Connected Load:
+                    %.2f kW
+                    
+                    Demand Load:
+                    %.2f kW
+                    
+                    Total Apparent Power:
+                    %.2f kVA
+                    
+                    Overall Power Factor:
+                    %.3f
+                    
+                    Estimated 3-Phase Current:
+                    %.2f A
+                    
+                    ✓ Results transferred to all design modules
+                """.trimIndent().format(
+                    connected,
+                    demand,
+                    apparent,
+                    overallPF,
+                    current
+                )
+
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Calculate Complete Schedule")
         }
 
         if (loads.isNotEmpty()) {
 
+            HorizontalDivider()
+
             Text(
-                """
-                Connected Load: %.2f kW
-                Demand Load: %.2f kW
-                Total Demand: %.2f kVA
-                Overall PF: %.3f
-                Estimated Current @ 400V: %.2f A
-                """.trimIndent().format(
-                    totalConnectedKW,
-                    totalDemandKW,
-                    totalKVA,
-                    overallPF,
-                    totalCurrent
-                )
+                "Loads: ${loads.size}",
+                style = MaterialTheme.typography.titleMedium
             )
+
+            loads.forEachIndexed { index, load ->
+
+                Text(
+                    "${index + 1}. ${load.name} | " +
+                            "${load.quantity} × " +
+                            "${load.powerKW} kW | " +
+                            "DF ${load.demandFactor}"
+                )
+            }
         }
 
         if (result.isNotEmpty()) {
-            Text(result)
+
+            HorizontalDivider()
+
+            Text(
+                result,
+                style = MaterialTheme.typography.bodyLarge
+            )
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Button(
+            onClick = onBack,
+            modifier = Modifier.fillMaxWidth()
         ) {
-
-            Button(
-                onClick = {
-                    loads = emptyList()
-                    result = "Load schedule cleared."
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Clear")
-            }
-
-            Button(
-                onClick = onBack,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Back")
-            }
+            Text("Back")
         }
     }
 }
