@@ -1,28 +1,36 @@
 package com.electricaldesignengineer.app
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
+import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlin.math.sqrt
 
 @Composable
 fun ShortCircuitScreen(
     onBack: () -> Unit = {}
 ) {
-    var voltage by remember { mutableStateOf("400") }
-    var transformerKva by remember { mutableStateOf("") }
-    var impedance by remember { mutableStateOf("6") }
+
+    var transformerKVA by remember {
+        mutableStateOf(
+            if (ElectricalCalculator.transformerKVA > 0)
+                ElectricalCalculator.transformerKVA.toString()
+            else "1000"
+        )
+    }
+
+    var voltage by remember {
+        mutableStateOf(
+            ElectricalCalculator.voltageV.toString()
+        )
+    }
+
+    var impedance by remember {
+        mutableStateOf("6.0")
+    }
+
     var result by remember { mutableStateOf("") }
 
     Column(
@@ -33,19 +41,22 @@ fun ShortCircuitScreen(
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
 
-        Text("Short Circuit Current")
+        Text(
+            text = "Short Circuit Current",
+            style = MaterialTheme.typography.headlineSmall
+        )
 
         OutlinedTextField(
-            value = voltage,
-            onValueChange = { voltage = it },
-            label = { Text("Secondary Voltage (V)") },
+            value = transformerKVA,
+            onValueChange = { transformerKVA = it },
+            label = { Text("Transformer Rating (kVA)") },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
-            value = transformerKva,
-            onValueChange = { transformerKva = it },
-            label = { Text("Transformer Rating (kVA)") },
+            value = voltage,
+            onValueChange = { voltage = it },
+            label = { Text("LV Voltage (V)") },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -59,52 +70,60 @@ fun ShortCircuitScreen(
         Button(
             onClick = {
 
-                val v = voltage.toDoubleOrNull() ?: 0.0
-                val kva = transformerKva.toDoubleOrNull() ?: 0.0
-                val zPercent = impedance.toDoubleOrNull() ?: 0.0
+                val kva =
+                    transformerKVA.toDoubleOrNull() ?: 0.0
 
-                if (v <= 0 || kva <= 0 || zPercent <= 0) {
-                    result = "Please enter valid values."
-                    return@Button
-                }
+                val v =
+                    voltage.toDoubleOrNull() ?: 0.0
 
-                val fullLoadCurrent =
-                    (kva * 1000.0) / (sqrt(3.0) * v)
+                val z =
+                    impedance.toDoubleOrNull() ?: 0.0
 
-                val shortCircuitCurrent =
-                    fullLoadCurrent * (100.0 / zPercent)
+                val faultCurrent =
+                    ElectricalCalculator
+                        .transformerShortCircuit(
+                            transformerKVA = kva,
+                            voltage = v,
+                            impedancePercent = z
+                        )
 
                 result = """
-                    Short Circuit Result
+                    Short Circuit Calculation
                     -------------------------
-                    Transformer: %.0f kVA
                     
-                    Full Load Current: %.2f A
+                    Transformer:
+                    %.0f kVA
                     
-                    Transformer Z: %.2f %%
+                    Voltage:
+                    %.0f V
+                    
+                    Impedance:
+                    %.2f %%
                     
                     Prospective Short Circuit:
-                    %.2f A
                     %.2f kA
+                    
+                    ✓ Result saved for Breaker Selection
                 """.trimIndent().format(
                     kva,
-                    fullLoadCurrent,
-                    zPercent,
-                    shortCircuitCurrent,
-                    shortCircuitCurrent / 1000.0
+                    v,
+                    z,
+                    faultCurrent
                 )
+
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Calculate")
+            Text("Calculate Short Circuit")
         }
 
         if (result.isNotEmpty()) {
+
+            HorizontalDivider()
+
             Text(
-                result,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
+                text = result,
+                style = MaterialTheme.typography.bodyLarge
             )
         }
 
