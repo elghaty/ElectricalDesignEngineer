@@ -35,6 +35,12 @@ fun ElectricalDesignApp() {
 
     when (selectedModule?.title) {
 
+        "Project Management" -> {
+            ProjectManagementScreen {
+                selectedModule = null
+            }
+        }
+
         "Load Calculation" -> {
             LoadCalculationScreen {
                 selectedModule = null
