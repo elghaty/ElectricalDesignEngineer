@@ -9,7 +9,7 @@ kotlin {
     jvmToolchain(17)
 }
 
-android { {
+android { 
     namespace = "com.electricaldesignengineer.app"
     compileSdk = 35
 
