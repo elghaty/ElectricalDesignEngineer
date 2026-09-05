@@ -55,6 +55,12 @@ fun ElectricalDesignApp() {
             }
         }
 
+        "Breaker Selection" -> {
+            BreakerSelectionScreen {
+                selectedModule = null
+            }
+        }
+
         else -> {
             MainScreen { module ->
                 selectedModule = module
