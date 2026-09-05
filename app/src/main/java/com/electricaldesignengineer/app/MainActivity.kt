@@ -32,27 +32,27 @@ fun ElectricalDesignApp() {
     when (selectedModule?.title) {
 
         "Load Calculation" -> {
-            LoadCalculationScreen(
-                onBack = {
-                    selectedModule = null
-                }
-            )
+            LoadCalculationScreen {
+                selectedModule = null
+            }
         }
 
         "Cable Sizing" -> {
-            CableSizingScreen(
-                onBack = {
-                    selectedModule = null
-                }
-            )
+            CableSizingScreen {
+                selectedModule = null
+            }
+        }
+
+        "Voltage Drop" -> {
+            VoltageDropScreen {
+                selectedModule = null
+            }
         }
 
         else -> {
-            MainScreen(
-                onModuleSelected = { module ->
-                    selectedModule = module
-                }
-            )
+            MainScreen { module ->
+                selectedModule = module
+            }
         }
     }
 }
