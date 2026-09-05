@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.*
 
 class MainActivity : ComponentActivity() {
 
@@ -14,9 +15,36 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface {
-                    MainScreen()
+                    ElectricalDesignApp()
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun ElectricalDesignApp() {
+
+    var selectedModule by remember {
+        mutableStateOf<DesignModule?>(null)
+    }
+
+    when (selectedModule?.title) {
+
+        "Load Calculation" -> {
+            LoadCalculationScreen(
+                onBack = {
+                    selectedModule = null
+                }
+            )
+        }
+
+        else -> {
+            MainScreen(
+                onModuleSelected = { module ->
+                    selectedModule = module
+                }
+            )
         }
     }
 }
