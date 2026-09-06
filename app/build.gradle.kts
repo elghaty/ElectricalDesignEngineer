@@ -2,7 +2,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("org.jetbrains.kotlin.kapt")
 }
 
 kotlin {
@@ -56,11 +55,7 @@ dependencies {
         "androidx.compose.ui:ui-tooling:1.7.6"
     )
 
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
-
-    implementation("androidx.room:room-runtime:2.6.1")
-
-    implementation("androidx.room:room-ktx:2.6.1")
-
-    kapt("androidx.room:room-compiler:2.6.1")
+    implementation(
+        "androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7"
+    )
 }
