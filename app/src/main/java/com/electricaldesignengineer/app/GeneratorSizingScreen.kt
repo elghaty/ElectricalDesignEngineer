@@ -1,10 +1,24 @@
 package com.electricaldesignengineer.app
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -12,24 +26,40 @@ import androidx.compose.ui.unit.dp
 fun GeneratorSizingScreen(
     onBack: () -> Unit = {}
 ) {
+
+    val project = ProjectManager.calculation
+
     var demandKW by remember {
         mutableStateOf(
-            if (ElectricalCalculator.demandKW > 0)
-                "%.2f".format(ElectricalCalculator.demandKW)
-            else ""
+            if (project.demandKW > 0.0) {
+                "%.2f".format(project.demandKW)
+            } else {
+                ""
+            }
         )
     }
 
-    var pf by remember {
+    var powerFactor by remember {
         mutableStateOf(
-            "%.2f".format(ElectricalCalculator.powerFactor)
+            if (project.powerFactor > 0.0) {
+                "%.3f".format(project.powerFactor)
+            } else {
+                "0.900"
+            }
         )
     }
 
-    var loading by remember { mutableStateOf("80") }
-    var motorAllowance by remember { mutableStateOf("15") }
+    var loadingPercent by remember {
+        mutableStateOf("80")
+    }
 
-    var result by remember { mutableStateOf("") }
+    var motorAllowance by remember {
+        mutableStateOf("15")
+    }
+
+    var result by remember {
+        mutableStateOf("")
+    }
 
     Column(
         modifier = Modifier
@@ -40,101 +70,208 @@ fun GeneratorSizingScreen(
     ) {
 
         Text(
-            "Generator Sizing",
+            text = "Generator Sizing",
             style = MaterialTheme.typography.headlineSmall
+        )
+
+        Text(
+            text = "Project: ${
+                project.projectName.ifBlank {
+                    "Current Project"
+                }
+            }",
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        HorizontalDivider()
+
+        Text(
+            text = "Generator Design Input",
+            style = MaterialTheme.typography.titleMedium
         )
 
         OutlinedTextField(
             value = demandKW,
-            onValueChange = { demandKW = it },
-            label = { Text("Demand Load (kW)") },
+            onValueChange = {
+                demandKW = it
+            },
+            label = {
+                Text("Demand Load (kW)")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
-            value = pf,
-            onValueChange = { pf = it },
-            label = { Text("Power Factor") },
+            value = powerFactor,
+            onValueChange = {
+                powerFactor = it
+            },
+            label = {
+                Text("Power Factor")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
-            value = loading,
-            onValueChange = { loading = it },
-            label = { Text("Generator Loading (%)") },
+            value = loadingPercent,
+            onValueChange = {
+                loadingPercent = it
+            },
+            label = {
+                Text("Generator Loading (%)")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
             value = motorAllowance,
-            onValueChange = { motorAllowance = it },
-            label = { Text("Motor Starting Allowance (%)") },
+            onValueChange = {
+                motorAllowance = it
+            },
+            label = {
+                Text("Motor Starting Allowance (%)")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         Button(
             onClick = {
 
-                val kw = demandKW.toDoubleOrNull() ?: 0.0
-                val powerFactor = pf.toDoubleOrNull() ?: 0.0
-                val load = loading.toDoubleOrNull() ?: 80.0
-                val motor = motorAllowance.toDoubleOrNull() ?: 15.0
+                val kw =
+                    demandKW.toDoubleOrNull() ?: 0.0
 
-                if (kw <= 0 || powerFactor <= 0) {
+                val pf =
+                    powerFactor
+                        .toDoubleOrNull()
+                        ?.coerceIn(0.01, 1.0)
+                        ?: 0.90
 
-                    result = "Please calculate Load first."
+                val loading =
+                    loadingPercent
+                        .toDoubleOrNull()
+                        ?.coerceIn(1.0, 100.0)
+                        ?: 80.0
+
+                val motor =
+                    motorAllowance
+                        .toDoubleOrNull()
+                        ?.coerceAtLeast(0.0)
+                        ?: 15.0
+
+                if (kw <= 0.0) {
+
+                    result =
+                        "Please calculate Load first."
 
                 } else {
 
-                    val selected =
+                    ProjectManager.updateSystem(
+                        powerFactor = pf
+                    )
+
+                    val generator =
                         ElectricalCalculator.selectGenerator(
                             demandKW = kw,
-                            pf = powerFactor,
-                            loadingPercent = load,
+                            pf = pf,
+                            loadingPercent = loading,
                             motorAllowancePercent = motor
                         )
 
+                    ProjectManager.setGenerator(
+                        generatorKVA = generator
+                    )
+
                     result = """
                         GENERATOR SIZING
-                        -------------------------
                         
                         Demand Load:
                         %.2f kW
                         
-                        Base Load:
-                        %.2f kVA
+                        Power Factor:
+                        %.3f
                         
                         Generator Loading:
                         %.1f %%
                         
-                        Motor Allowance:
+                        Motor Starting Allowance:
                         %.1f %%
                         
                         Recommended Generator:
                         %.0f kVA
                         
-                        ✓ Result saved to system
+                        Design Status:
+                        %s
+                        
+                        ✓ Generator result saved to ProjectManager
+                        ✓ Generator data available to project
                     """.trimIndent().format(
                         kw,
-                        kw / powerFactor,
-                        load,
+                        pf,
+                        loading,
                         motor,
-                        selected
+                        generator,
+                        ProjectManager.calculation.designStatus
                     )
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Size Generator")
+            Text("Calculate & Save Generator")
         }
 
         if (result.isNotEmpty()) {
+
             HorizontalDivider()
+
             Text(
-                result,
+                text = result,
                 style = MaterialTheme.typography.bodyLarge
             )
+
+            Spacer(
+                modifier = Modifier.height(4.dp)
+            )
+
+            Text(
+                text = "✓ Generator saved to ProjectManager",
+                style = MaterialTheme.typography.labelLarge
+            )
         }
+
+        HorizontalDivider()
+
+        Text(
+            text = "Current Project Generator",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Text(
+            text = "Demand Load: %.2f kW".format(
+                ProjectManager.calculation.demandKW
+            )
+        )
+
+        Text(
+            text = "Power Factor: %.3f".format(
+                ProjectManager.calculation.powerFactor
+            )
+        )
+
+        Text(
+            text = "Generator: %.0f kVA".format(
+                ProjectManager.calculation.generatorKVA
+            )
+        )
+
+        Text(
+            text = "Design Status: ${
+                ProjectManager.calculation.designStatus
+            }"
+        )
+
+        Spacer(
+            modifier = Modifier.height(10.dp)
+        )
 
         Button(
             onClick = onBack,
