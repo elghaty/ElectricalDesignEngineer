@@ -297,6 +297,21 @@ fun LoadScheduleScreen(
                         )
                     }
 
+                    Button(
+                        onClick = {
+
+                            ProjectManager.removeLoad(load)
+
+                            ProjectManager.calculateFromLoads()
+
+                            message =
+                                "✓ Load removed and project recalculated."
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Remove Load")
+                    }
+
                     HorizontalDivider()
                 }
             }
