@@ -151,17 +151,11 @@ fun EarthingScreen(
                     ProjectManager.setEarthing(
                         earthResistanceOhm = resistance,
                         earthFaultCurrentA = fault,
-                        earthPotentialRiseV = earth.potentialRiseV,
+                        earthPotentialRiseV =
+                            earth.earthPotentialRiseV,
                         maximumEarthResistanceOhm =
                             earth.maximumResistanceOhm
                     )
-
-                    val status =
-                        if (earth.isAcceptable) {
-                            "ACCEPTABLE"
-                        } else {
-                            "NOT ACCEPTABLE"
-                        }
 
                     result = """
                         EARTHING CHECK
@@ -192,9 +186,9 @@ fun EarthingScreen(
                         resistance,
                         fault,
                         touchVoltage,
-                        earth.potentialRiseV,
+                        earth.earthPotentialRiseV,
                         earth.maximumResistanceOhm,
-                        status,
+                        earth.status,
                         ProjectManager.calculation.designStatus
                     )
                 }
