@@ -1,10 +1,24 @@
 package com.electricaldesignengineer.app
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -12,17 +26,26 @@ import androidx.compose.ui.unit.dp
 fun PowerFactorCorrectionScreen(
     onBack: () -> Unit = {}
 ) {
-    var powerKW by remember {
+
+    val project = ProjectManager.calculation
+
+    var activePower by remember {
         mutableStateOf(
-            if (ElectricalCalculator.demandKW > 0)
-                "%.2f".format(ElectricalCalculator.demandKW)
-            else ""
+            if (project.demandKW > 0.0) {
+                "%.2f".format(project.demandKW)
+            } else {
+                ""
+            }
         )
     }
 
     var existingPF by remember {
         mutableStateOf(
-            "%.2f".format(ElectricalCalculator.powerFactor)
+            if (project.powerFactor > 0.0) {
+                "%.3f".format(project.powerFactor)
+            } else {
+                "0.80"
+            }
         )
     }
 
@@ -30,7 +53,9 @@ fun PowerFactorCorrectionScreen(
         mutableStateOf("0.95")
     }
 
-    var result by remember { mutableStateOf("") }
+    var result by remember {
+        mutableStateOf("")
+    }
 
     Column(
         modifier = Modifier
@@ -41,96 +66,191 @@ fun PowerFactorCorrectionScreen(
     ) {
 
         Text(
-            "Power Factor Correction",
+            text = "Power Factor Correction",
             style = MaterialTheme.typography.headlineSmall
         )
 
+        Text(
+            text = "Project: ${
+                project.projectName.ifBlank {
+                    "Current Project"
+                }
+            }",
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        HorizontalDivider()
+
+        Text(
+            text = "Power Factor Correction Input",
+            style = MaterialTheme.typography.titleMedium
+        )
+
         OutlinedTextField(
-            value = powerKW,
-            onValueChange = { powerKW = it },
-            label = { Text("Active Power (kW)") },
+            value = activePower,
+            onValueChange = {
+                activePower = it
+            },
+            label = {
+                Text("Active Power (kW)")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
             value = existingPF,
-            onValueChange = { existingPF = it },
-            label = { Text("Existing Power Factor") },
+            onValueChange = {
+                existingPF = it
+            },
+            label = {
+                Text("Existing Power Factor")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
             value = targetPF,
-            onValueChange = { targetPF = it },
-            label = { Text("Target Power Factor") },
+            onValueChange = {
+                targetPF = it
+            },
+            label = {
+                Text("Target Power Factor")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         Button(
             onClick = {
 
-                val p = powerKW.toDoubleOrNull() ?: 0.0
-                val pf1 = existingPF.toDoubleOrNull() ?: 0.0
-                val pf2 = targetPF.toDoubleOrNull() ?: 0.0
+                val kw =
+                    activePower.toDoubleOrNull() ?: 0.0
 
-                if (
-                    p <= 0 ||
-                    pf1 <= 0 ||
-                    pf2 <= 0 ||
-                    pf2 <= pf1
-                ) {
+                val pfOld =
+                    existingPF
+                        .toDoubleOrNull()
+                        ?.coerceIn(0.01, 0.999)
+                        ?: 0.80
+
+                val pfTarget =
+                    targetPF
+                        .toDoubleOrNull()
+                        ?.coerceIn(0.01, 0.999)
+                        ?: 0.95
+
+                if (kw <= 0.0) {
 
                     result =
-                        "Enter valid values. Target PF should be higher than existing PF."
+                        "Please calculate Load first."
+
+                } else if (pfTarget <= pfOld) {
+
+                    result =
+                        "Target PF must be higher than existing PF."
 
                 } else {
 
-                    val qc =
+                    ProjectManager.updateSystem(
+                        powerFactor = pfTarget
+                    )
+
+                    val capacitor =
                         ElectricalCalculator.capacitorBank(
-                            activePowerKW = p,
-                            existingPF = pf1,
-                            targetPF = pf2
+                            activePowerKW = kw,
+                            existingPF = pfOld,
+                            targetPF = pfTarget
                         )
+
+                    ProjectManager.setCapacitorBank(
+                        capacitorKVAR = capacitor
+                    )
 
                     result = """
                         POWER FACTOR CORRECTION
-                        -------------------------
                         
                         Active Power:
                         %.2f kW
                         
-                        Existing PF:
-                        %.2f
+                        Existing Power Factor:
+                        %.3f
                         
-                        Target PF:
-                        %.2f
+                        Target Power Factor:
+                        %.3f
                         
-                        Required Capacitor:
-                        %.2f kVAr
+                        Required Capacitor Bank:
+                        %.2f kVAR
                         
-                        Recommended:
-                        %.0f kVAr
+                        Design Status:
+                        %s
+                        
+                        ✓ Capacitor bank result saved to ProjectManager
+                        ✓ Power factor updated in project
                     """.trimIndent().format(
-                        p,
-                        pf1,
-                        pf2,
-                        qc,
-                        kotlin.math.ceil(qc / 5.0) * 5.0
+                        kw,
+                        pfOld,
+                        pfTarget,
+                        capacitor,
+                        ProjectManager.calculation.designStatus
                     )
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Calculate Capacitor Bank")
+            Text("Calculate & Save Capacitor Bank")
         }
 
         if (result.isNotEmpty()) {
+
             HorizontalDivider()
+
             Text(
-                result,
+                text = result,
                 style = MaterialTheme.typography.bodyLarge
             )
+
+            Spacer(
+                modifier = Modifier.height(4.dp)
+            )
+
+            Text(
+                text = "✓ Power factor correction saved to ProjectManager",
+                style = MaterialTheme.typography.labelLarge
+            )
         }
+
+        HorizontalDivider()
+
+        Text(
+            text = "Current Project Power Factor",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Text(
+            text = "Demand Load: %.2f kW".format(
+                ProjectManager.calculation.demandKW
+            )
+        )
+
+        Text(
+            text = "Power Factor: %.3f".format(
+                ProjectManager.calculation.powerFactor
+            )
+        )
+
+        Text(
+            text = "Capacitor Bank: %.2f kVAR".format(
+                ProjectManager.calculation.capacitorKVAR
+            )
+        )
+
+        Text(
+            text = "Design Status: ${
+                ProjectManager.calculation.designStatus
+            }"
+        )
+
+        Spacer(
+            modifier = Modifier.height(10.dp)
+        )
 
         Button(
             onClick = onBack,
