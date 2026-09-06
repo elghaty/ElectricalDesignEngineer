@@ -1,10 +1,25 @@
 package com.electricaldesignengineer.app
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -13,47 +28,59 @@ fun VoltageDropScreen(
     onBack: () -> Unit = {}
 ) {
 
+    val project = ProjectManager.calculation
+
     var current by remember {
         mutableStateOf(
-            if (ElectricalCalculator.designCurrentA > 0)
-                "%.2f".format(ElectricalCalculator.designCurrentA)
-            else ""
+            if (project.designCurrentA > 0.0) {
+                "%.2f".format(project.designCurrentA)
+            } else {
+                ""
+            }
         )
     }
 
     var cableSize by remember {
         mutableStateOf(
-            if (ElectricalCalculator.cableSizeMm2 > 0)
-                "%.1f".format(ElectricalCalculator.cableSizeMm2)
-            else ""
+            if (project.cableSizeMm2 > 0.0) {
+                "%.1f".format(project.cableSizeMm2)
+            } else {
+                ""
+            }
         )
     }
 
     var length by remember {
         mutableStateOf(
-            if (ElectricalCalculator.cableLengthM > 0)
-                "%.1f".format(ElectricalCalculator.cableLengthM)
-            else "30"
+            if (project.cableLengthM > 0.0) {
+                "%.1f".format(project.cableLengthM)
+            } else {
+                "30"
+            }
         )
     }
 
     var voltage by remember {
         mutableStateOf(
-            ElectricalCalculator.voltageV.toString()
+            project.voltageV.toString()
         )
     }
 
     var powerFactor by remember {
         mutableStateOf(
-            ElectricalCalculator.powerFactor.toString()
+            project.powerFactor.toString()
         )
     }
 
     var isThreePhase by remember {
-        mutableStateOf(ElectricalCalculator.isThreePhase)
+        mutableStateOf(
+            project.isThreePhase
+        )
     }
 
-    var result by remember { mutableStateOf("") }
+    var result by remember {
+        mutableStateOf("")
+    }
 
     Column(
         modifier = Modifier
@@ -68,38 +95,74 @@ fun VoltageDropScreen(
             style = MaterialTheme.typography.headlineSmall
         )
 
+        Text(
+            text = "Project: ${
+                project.projectName.ifBlank {
+                    "Current Project"
+                }
+            }",
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        HorizontalDivider()
+
+        Text(
+            text = "Project Electrical Data",
+            style = MaterialTheme.typography.titleMedium
+        )
+
         OutlinedTextField(
             value = current,
-            onValueChange = { current = it },
-            label = { Text("Current (A)") },
+            onValueChange = {
+                current = it
+            },
+            label = {
+                Text("Design Current (A)")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
             value = cableSize,
-            onValueChange = { cableSize = it },
-            label = { Text("Cable Size (mm²)") },
+            onValueChange = {
+                cableSize = it
+            },
+            label = {
+                Text("Cable Size (mm²)")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
             value = length,
-            onValueChange = { length = it },
-            label = { Text("Cable Length (m)") },
+            onValueChange = {
+                length = it
+            },
+            label = {
+                Text("Cable Length (m)")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
             value = voltage,
-            onValueChange = { voltage = it },
-            label = { Text("System Voltage (V)") },
+            onValueChange = {
+                voltage = it
+            },
+            label = {
+                Text("System Voltage (V)")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
             value = powerFactor,
-            onValueChange = { powerFactor = it },
-            label = { Text("Power Factor") },
+            onValueChange = {
+                powerFactor = it
+            },
+            label = {
+                Text("Power Factor")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -109,14 +172,18 @@ fun VoltageDropScreen(
         ) {
 
             Button(
-                onClick = { isThreePhase = true },
+                onClick = {
+                    isThreePhase = true
+                },
                 modifier = Modifier.weight(1f)
             ) {
                 Text("3 Phase")
             }
 
             Button(
-                onClick = { isThreePhase = false },
+                onClick = {
+                    isThreePhase = false
+                },
                 modifier = Modifier.weight(1f)
             ) {
                 Text("1 Phase")
@@ -139,13 +206,28 @@ fun VoltageDropScreen(
                     voltage.toDoubleOrNull() ?: 0.0
 
                 val pf =
-                    powerFactor.toDoubleOrNull() ?: 0.90
+                    powerFactor
+                        .toDoubleOrNull()
+                        ?.coerceIn(0.01, 1.0)
+                        ?: project.powerFactor
 
-                if (i <= 0 || s <= 0 || l <= 0 || v <= 0) {
+                if (
+                    i <= 0.0 ||
+                    s <= 0.0 ||
+                    l <= 0.0 ||
+                    v <= 0.0
+                ) {
 
-                    result = "Please enter valid values."
+                    result =
+                        "Please enter valid values."
 
                 } else {
+
+                    ProjectManager.updateSystem(
+                        voltageV = v,
+                        powerFactor = pf,
+                        isThreePhase = isThreePhase
+                    )
 
                     val calculation =
                         ElectricalCalculator.selectCable(
@@ -156,12 +238,31 @@ fun VoltageDropScreen(
                             threePhase = isThreePhase
                         )
 
+                    ProjectManager.setCableResult(
+                        cableSizeMm2 = s,
+                        cableAmpacityA =
+                            ProjectManager.calculation.cableAmpacityA,
+                        cableLengthM = l,
+                        voltageDropV =
+                            calculation.voltageDropV,
+                        voltageDropPercent =
+                            calculation.voltageDropPercent
+                    )
+
                     result = """
-                        Voltage Drop Result
-                        -------------------------
+                        VOLTAGE DROP RESULT
                         
                         Cable:
                         %.1f mm²
+                        
+                        Current:
+                        %.2f A
+                        
+                        Cable Length:
+                        %.1f m
+                        
+                        System Voltage:
+                        %.0f V
                         
                         Voltage Drop:
                         %.2f V
@@ -169,23 +270,22 @@ fun VoltageDropScreen(
                         Voltage Drop:
                         %.2f %%
                         
-                        Limit:
-                        3.00 %%
-                        
-                        Status:
+                        Design Status:
                         %s
                     """.trimIndent().format(
                         s,
+                        i,
+                        l,
+                        v,
                         calculation.voltageDropV,
                         calculation.voltageDropPercent,
-                        calculation.status
+                        ProjectManager.calculation.designStatus
                     )
                 }
-
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Calculate Voltage Drop")
+            Text("Calculate & Save Voltage Drop")
         }
 
         if (result.isNotEmpty()) {
@@ -196,7 +296,68 @@ fun VoltageDropScreen(
                 text = result,
                 style = MaterialTheme.typography.bodyLarge
             )
+
+            Spacer(
+                modifier = Modifier.height(4.dp)
+            )
+
+            Text(
+                text = "✓ Voltage Drop saved to ProjectManager",
+                style = MaterialTheme.typography.labelLarge
+            )
+
+            Text(
+                text = "✓ Result available for protection and final design",
+                style = MaterialTheme.typography.labelLarge
+            )
         }
+
+        HorizontalDivider()
+
+        Text(
+            text = "Current Project Result",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Text(
+            text = "Design Current: %.2f A".format(
+                ProjectManager.calculation.designCurrentA
+            )
+        )
+
+        Text(
+            text = "Cable: %.1f mm²".format(
+                ProjectManager.calculation.cableSizeMm2
+            )
+        )
+
+        Text(
+            text = "Cable Length: %.1f m".format(
+                ProjectManager.calculation.cableLengthM
+            )
+        )
+
+        Text(
+            text = "Voltage Drop: %.2f V".format(
+                ProjectManager.calculation.voltageDropV
+            )
+        )
+
+        Text(
+            text = "Voltage Drop: %.2f %%".format(
+                ProjectManager.calculation.voltageDropPercent
+            )
+        )
+
+        Text(
+            text = "Design Status: ${
+                ProjectManager.calculation.designStatus
+            }"
+        )
+
+        Spacer(
+            modifier = Modifier.height(10.dp)
+        )
 
         Button(
             onClick = onBack,
