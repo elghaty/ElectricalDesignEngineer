@@ -1,10 +1,24 @@
 package com.electricaldesignengineer.app
 
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.Button
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
@@ -12,17 +26,26 @@ import androidx.compose.ui.unit.dp
 fun TransformerSizingScreen(
     onBack: () -> Unit = {}
 ) {
+
+    val project = ProjectManager.calculation
+
     var demandKW by remember {
         mutableStateOf(
-            if (ElectricalCalculator.demandKW > 0)
-                "%.2f".format(ElectricalCalculator.demandKW)
-            else ""
+            if (project.demandKW > 0.0) {
+                "%.2f".format(project.demandKW)
+            } else {
+                ""
+            }
         )
     }
 
-    var pf by remember {
+    var powerFactor by remember {
         mutableStateOf(
-            "%.2f".format(ElectricalCalculator.powerFactor)
+            if (project.powerFactor > 0.0) {
+                "%.3f".format(project.powerFactor)
+            } else {
+                "0.900"
+            }
         )
     }
 
@@ -30,7 +53,9 @@ fun TransformerSizingScreen(
         mutableStateOf("20")
     }
 
-    var result by remember { mutableStateOf("") }
+    var result by remember {
+        mutableStateOf("")
+    }
 
     Column(
         modifier = Modifier
@@ -41,88 +66,196 @@ fun TransformerSizingScreen(
     ) {
 
         Text(
-            "Transformer Sizing",
+            text = "Transformer Sizing",
             style = MaterialTheme.typography.headlineSmall
+        )
+
+        Text(
+            text = "Project: ${
+                project.projectName.ifBlank {
+                    "Current Project"
+                }
+            }",
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        HorizontalDivider()
+
+        Text(
+            text = "Transformer Design Input",
+            style = MaterialTheme.typography.titleMedium
         )
 
         OutlinedTextField(
             value = demandKW,
-            onValueChange = { demandKW = it },
-            label = { Text("Demand Load (kW)") },
+            onValueChange = {
+                demandKW = it
+            },
+            label = {
+                Text("Demand Load (kW)")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
-            value = pf,
-            onValueChange = { pf = it },
-            label = { Text("Power Factor") },
+            value = powerFactor,
+            onValueChange = {
+                powerFactor = it
+            },
+            label = {
+                Text("Power Factor")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
             value = margin,
-            onValueChange = { margin = it },
-            label = { Text("Design Margin (%)") },
+            onValueChange = {
+                margin = it
+            },
+            label = {
+                Text("Design Margin (%)")
+            },
             modifier = Modifier.fillMaxWidth()
         )
 
         Button(
             onClick = {
 
-                val kw = demandKW.toDoubleOrNull() ?: 0.0
-                val powerFactor = pf.toDoubleOrNull() ?: 0.0
-                val m = margin.toDoubleOrNull() ?: 20.0
+                val kw =
+                    demandKW.toDoubleOrNull() ?: 0.0
 
-                if (kw <= 0 || powerFactor <= 0) {
-                    result = "Please calculate Load first."
+                val pf =
+                    powerFactor
+                        .toDoubleOrNull()
+                        ?.coerceIn(0.01, 1.0)
+                        ?: 0.90
+
+                val marginPercent =
+                    margin.toDoubleOrNull()
+                        ?.coerceAtLeast(0.0)
+                        ?: 20.0
+
+                if (kw <= 0.0) {
+
+                    result =
+                        "Please calculate Load first."
+
                 } else {
 
-                    val selected =
+                    ProjectManager.updateSystem(
+                        powerFactor = pf
+                    )
+
+                    val transformer =
                         ElectricalCalculator.selectTransformer(
                             demandKW = kw,
-                            pf = powerFactor,
-                            marginPercent = m
+                            pf = pf,
+                            marginPercent = marginPercent
                         )
 
-                    val baseKVA = kw / powerFactor
+                    ProjectManager.setTransformer(
+                        transformerKVA = transformer
+                    )
 
                     result = """
                         TRANSFORMER SIZING
-                        -------------------------
                         
                         Demand Load:
                         %.2f kW
                         
-                        Required Load:
-                        %.2f kVA
+                        Power Factor:
+                        %.3f
                         
                         Design Margin:
                         %.1f %%
                         
-                        Recommended Transformer:
+                        Required Transformer:
                         %.0f kVA
                         
-                        ✓ Result saved to system
+                        Design Status:
+                        %s
+                        
+                        ✓ Transformer result saved to ProjectManager
+                        ✓ Transformer data available to Short Circuit
                     """.trimIndent().format(
                         kw,
-                        baseKVA,
-                        m,
-                        selected
+                        pf,
+                        marginPercent,
+                        transformer,
+                        ProjectManager.calculation.designStatus
                     )
                 }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
-            Text("Size Transformer")
+            Text("Calculate & Save Transformer")
         }
 
         if (result.isNotEmpty()) {
+
             HorizontalDivider()
+
             Text(
-                result,
+                text = result,
                 style = MaterialTheme.typography.bodyLarge
             )
+
+            Spacer(
+                modifier = Modifier.height(4.dp)
+            )
+
+            Text(
+                text = "✓ Transformer saved to ProjectManager",
+                style = MaterialTheme.typography.labelLarge
+            )
+
+            Text(
+                text = "✓ Short Circuit can use transformer rating",
+                style = MaterialTheme.typography.labelLarge
+            )
         }
+
+        HorizontalDivider()
+
+        Text(
+            text = "Current Project Transformer",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Text(
+            text = "Demand Load: %.2f kW".format(
+                ProjectManager.calculation.demandKW
+            )
+        )
+
+        Text(
+            text = "Power Factor: %.3f".format(
+                ProjectManager.calculation.powerFactor
+            )
+        )
+
+        Text(
+            text = "Transformer: %.0f kVA".format(
+                ProjectManager.calculation.transformerKVA
+            )
+        )
+
+        Text(
+            text = "Design Current: %.2f A".format(
+                ProjectManager.calculation.designCurrentA
+            )
+        )
+
+        Text(
+            text = "Design Status: ${
+                ProjectManager.calculation.designStatus
+            }"
+        )
+
+        Spacer(
+            modifier = Modifier.height(10.dp)
+        )
 
         Button(
             onClick = onBack,
