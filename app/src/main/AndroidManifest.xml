@@ -2,10 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
-        android:allowBackup="true"
-        android:label="Electrical Design Engineer"
-        android:supportsRtl="true"
-        android:theme="@style/Theme.ElectricalDesignEngineer">
+    android:allowBackup="true"
+    android:label="Electrical Design Engineer"
+    android:icon="@drawable/ic_electrical_engineer"
+    android:roundIcon="@drawable/ic_electrical_engineer"
+    android:supportsRtl="true"
+    android:theme="@style/Theme.ElectricalDesignEngineer">
 
         <activity
             android:name=".MainActivity"
