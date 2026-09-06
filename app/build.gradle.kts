@@ -41,8 +41,10 @@ android {
 
 dependencies {
 
+    // Android Core
     implementation("androidx.core:core-ktx:1.15.0")
 
+    // Jetpack Compose
     implementation("androidx.activity:activity-compose:1.10.0")
 
     implementation("androidx.compose.ui:ui:1.7.6")
@@ -55,7 +57,17 @@ dependencies {
         "androidx.compose.ui:ui-tooling:1.7.6"
     )
 
+    // ViewModel
     implementation(
         "androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7"
+    )
+
+    // Room - Runtime only
+    implementation(
+        "androidx.room:room-runtime:2.6.1"
+    )
+
+    implementation(
+        "androidx.room:room-ktx:2.6.1"
     )
 }
