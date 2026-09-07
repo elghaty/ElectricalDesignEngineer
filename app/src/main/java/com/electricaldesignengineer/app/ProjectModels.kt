@@ -9,54 +9,90 @@ data class LoadItem(
 )
 
 data class ProjectCalculation(
-
-    // Project basic data
     val projectName: String = "",
     val clientName: String = "",
     val projectLocation: String = "",
     val engineerName: String = "",
 
-    // Electrical system
+    // =========================
+    // SYSTEM DATA
+    // =========================
+
     val voltageV: Double = 400.0,
     val frequencyHz: Double = 50.0,
     val powerFactor: Double = 0.90,
     val isThreePhase: Boolean = true,
 
-    // Load calculation
+    // =========================
+    // LOAD CALCULATION
+    // =========================
+
     val connectedKW: Double = 0.0,
     val demandKW: Double = 0.0,
     val totalKVA: Double = 0.0,
     val designCurrentA: Double = 0.0,
 
-    // Cable
+    // =========================
+    // CABLE
+    // =========================
+
     val cableSizeMm2: Double = 0.0,
     val cableAmpacityA: Double = 0.0,
     val cableLengthM: Double = 0.0,
     val voltageDropV: Double = 0.0,
     val voltageDropPercent: Double = 0.0,
 
-    // Short circuit
+    // =========================
+    // SHORT CIRCUIT
+    // =========================
+
     val shortCircuitKA: Double = 0.0,
 
-    // Breaker
+    // =========================
+    // BREAKER
+    // =========================
+
     val breakerRatingA: Int = 0,
     val breakerIcuKA: Double = 0.0,
 
-    // Transformer
+    // =========================
+    // TRANSFORMER
+    // =========================
+
     val transformerKVA: Double = 0.0,
 
-    // Generator
+    /**
+     * Transformer percentage impedance.
+     * Typical engineering values are commonly in the
+     * approximate 4%–8% range, but final value must come
+     * from the transformer manufacturer's nameplate/data sheet.
+     */
+    val transformerImpedancePercent: Double = 6.0,
+
+    // =========================
+    // GENERATOR
+    // =========================
+
     val generatorKVA: Double = 0.0,
 
-    // Power factor correction
+    // =========================
+    // POWER FACTOR CORRECTION
+    // =========================
+
     val capacitorKVAR: Double = 0.0,
 
-    // Earthing
+    // =========================
+    // EARTHING
+    // =========================
+
     val earthResistanceOhm: Double = 0.0,
     val earthFaultCurrentA: Double = 0.0,
     val earthPotentialRiseV: Double = 0.0,
     val maximumEarthResistanceOhm: Double = 0.0,
 
-    // Design status
+    // =========================
+    // DESIGN STATUS
+    // =========================
+
     val designStatus: String = "NOT STARTED"
 )
