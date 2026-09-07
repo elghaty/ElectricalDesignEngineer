@@ -1,21 +1,27 @@
 package com.electricaldesignengineer.app
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+
 /**
  * Central project state.
  *
- * All electrical design modules use this object so that
- * the result of one calculation becomes the input
- * of the following calculation.
+ * Compose observes calculation and loads so every screen is refreshed
+ * immediately after a calculation or load-list change.
  */
 object ProjectManager {
 
-    var calculation: ProjectCalculation = ProjectCalculation()
+    var calculation: ProjectCalculation by mutableStateOf(
+        ProjectCalculation()
+    )
         private set
 
-    private val _loads = mutableListOf<LoadItem>()
+    private val _loads = mutableStateListOf<LoadItem>()
 
     val loads: List<LoadItem>
-        get() = _loads.toList()
+        get() = _loads
 
     // --------------------------------------------------
     // PROJECT
@@ -64,9 +70,9 @@ object ProjectManager {
         isThreePhase: Boolean = calculation.isThreePhase
     ) {
         calculation = calculation.copy(
-            voltageV = voltageV,
-            frequencyHz = frequencyHz,
-            powerFactor = powerFactor,
+            voltageV = voltageV.coerceAtLeast(0.0),
+            frequencyHz = frequencyHz.coerceAtLeast(0.0),
+            powerFactor = powerFactor.coerceIn(0.01, 1.0),
             isThreePhase = isThreePhase
         )
 
@@ -87,6 +93,7 @@ object ProjectManager {
 
     fun clearLoads() {
         _loads.clear()
+        calculateFromLoads()
     }
 
     // --------------------------------------------------
@@ -119,9 +126,14 @@ object ProjectManager {
 
         val effectivePF =
             if (totalKVA > 0.0) {
-                demandKW / totalKVA
+
+                (demandKW / totalKVA)
+                    .coerceIn(0.01, 1.0)
+
             } else {
+
                 calculation.powerFactor
+                    .coerceIn(0.01, 1.0)
             }
 
         val designCurrentA =
@@ -177,21 +189,29 @@ object ProjectManager {
 
         calculation = calculation.copy(
 
-            connectedKW = connectedKW,
+            connectedKW =
+                connectedKW.coerceAtLeast(0.0),
 
-            demandKW = demandKW,
+            demandKW =
+                demandKW.coerceAtLeast(0.0),
 
-            totalKVA = totalKVA,
+            totalKVA =
+                totalKVA.coerceAtLeast(0.0),
 
-            designCurrentA = designCurrentA,
+            designCurrentA =
+                designCurrentA.coerceAtLeast(0.0),
 
-            voltageV = voltageV,
+            voltageV =
+                voltageV.coerceAtLeast(0.0),
 
-            powerFactor = powerFactor,
+            powerFactor =
+                powerFactor.coerceIn(0.01, 1.0),
 
-            isThreePhase = isThreePhase,
+            isThreePhase =
+                isThreePhase,
 
-            designStatus = "LOAD CALCULATION COMPLETE"
+            designStatus =
+                "LOAD CALCULATION COMPLETE"
         )
 
         syncToElectricalCalculator()
@@ -211,17 +231,23 @@ object ProjectManager {
 
         calculation = calculation.copy(
 
-            cableSizeMm2 = cableSizeMm2,
+            cableSizeMm2 =
+                cableSizeMm2.coerceAtLeast(0.0),
 
-            cableAmpacityA = cableAmpacityA,
+            cableAmpacityA =
+                cableAmpacityA.coerceAtLeast(0.0),
 
-            cableLengthM = cableLengthM,
+            cableLengthM =
+                cableLengthM.coerceAtLeast(0.0),
 
-            voltageDropV = voltageDropV,
+            voltageDropV =
+                voltageDropV.coerceAtLeast(0.0),
 
-            voltageDropPercent = voltageDropPercent,
+            voltageDropPercent =
+                voltageDropPercent.coerceAtLeast(0.0),
 
-            designStatus = "CABLE CALCULATION COMPLETE"
+            designStatus =
+                "CABLE CALCULATION COMPLETE"
         )
 
         syncToElectricalCalculator()
@@ -237,7 +263,8 @@ object ProjectManager {
 
         calculation = calculation.copy(
 
-            shortCircuitKA = shortCircuitKA,
+            shortCircuitKA =
+                shortCircuitKA.coerceAtLeast(0.0),
 
             designStatus =
                 "SHORT CIRCUIT CALCULATION COMPLETE"
@@ -257,9 +284,11 @@ object ProjectManager {
 
         calculation = calculation.copy(
 
-            breakerRatingA = breakerRatingA,
+            breakerRatingA =
+                breakerRatingA.coerceAtLeast(0),
 
-            breakerIcuKA = breakerIcuKA,
+            breakerIcuKA =
+                breakerIcuKA.coerceAtLeast(0.0),
 
             designStatus =
                 "BREAKER SELECTION COMPLETE"
@@ -278,7 +307,8 @@ object ProjectManager {
 
         calculation = calculation.copy(
 
-            transformerKVA = transformerKVA,
+            transformerKVA =
+                transformerKVA.coerceAtLeast(0.0),
 
             designStatus =
                 "TRANSFORMER SIZING COMPLETE"
@@ -297,7 +327,8 @@ object ProjectManager {
 
         calculation = calculation.copy(
 
-            generatorKVA = generatorKVA,
+            generatorKVA =
+                generatorKVA.coerceAtLeast(0.0),
 
             designStatus =
                 "GENERATOR SIZING COMPLETE"
@@ -316,7 +347,8 @@ object ProjectManager {
 
         calculation = calculation.copy(
 
-            capacitorKVAR = capacitorKVAR,
+            capacitorKVAR =
+                capacitorKVAR.coerceAtLeast(0.0),
 
             designStatus =
                 "POWER FACTOR CORRECTION COMPLETE"
@@ -339,16 +371,16 @@ object ProjectManager {
         calculation = calculation.copy(
 
             earthResistanceOhm =
-                earthResistanceOhm,
+                earthResistanceOhm.coerceAtLeast(0.0),
 
             earthFaultCurrentA =
-                earthFaultCurrentA,
+                earthFaultCurrentA.coerceAtLeast(0.0),
 
             earthPotentialRiseV =
-                earthPotentialRiseV,
+                earthPotentialRiseV.coerceAtLeast(0.0),
 
             maximumEarthResistanceOhm =
-                maximumEarthResistanceOhm,
+                maximumEarthResistanceOhm.coerceAtLeast(0.0),
 
             designStatus =
                 "EARTHING CHECK COMPLETE"
@@ -358,7 +390,7 @@ object ProjectManager {
     }
 
     // --------------------------------------------------
-    // SYNCHRONIZE WITH OLD CALCULATION ENGINE
+    // SYNCHRONIZE WITH ELECTRICAL CALCULATOR
     // --------------------------------------------------
 
     fun syncToElectricalCalculator() {
@@ -442,7 +474,8 @@ object ProjectManager {
                 ElectricalCalculator.voltageV,
 
             powerFactor =
-                ElectricalCalculator.powerFactor,
+                ElectricalCalculator.powerFactor
+                    .coerceIn(0.01, 1.0),
 
             isThreePhase =
                 ElectricalCalculator.isThreePhase,
