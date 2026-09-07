@@ -87,6 +87,21 @@ object ElectricalCalculator {
     )
 
     // =========================
+    // STANDARD BREAKER Icu
+    // =========================
+
+    val breakerIcuRatings = listOf(
+        6.0,
+        10.0,
+        15.0,
+        25.0,
+        36.0,
+        50.0,
+        65.0,
+        100.0
+    )
+
+    // =========================
     // STANDARD TRANSFORMERS
     // =========================
 
@@ -216,7 +231,7 @@ object ElectricalCalculator {
     )
 
     // =========================
-    // CURRENT CALCULATION
+    // CURRENT
     // =========================
 
     fun threePhaseCurrent(
@@ -255,19 +270,6 @@ object ElectricalCalculator {
     // CABLE SIZING
     // =========================
 
-    /**
-     * Cable selection logic:
-     *
-     * Automatic:
-     * Selects the smallest standard cable satisfying:
-     *
-     * 1. Cable ampacity >= design current
-     * 2. Voltage drop <= 3%
-     *
-     * Manual:
-     * If requestedCableSizeMm2 is supplied, that exact
-     * standard cable is evaluated and marked PASS/FAIL.
-     */
     fun selectCable(
         currentA: Double,
         lengthM: Double,
@@ -277,10 +279,6 @@ object ElectricalCalculator {
         requestedCableSizeMm2: Double? = null
     ): CableResult {
 
-        // -------------------------
-        // INPUT VALIDATION
-        // -------------------------
-
         if (
             currentA < 0.0 ||
             lengthM < 0.0 ||
@@ -288,39 +286,25 @@ object ElectricalCalculator {
         ) {
 
             return CableResult(
-                success = false,
-                sizeMm2 = 0.0,
-                ampacityA = 0.0,
-                voltageDropV = 0.0,
-                voltageDropPercent = 0.0,
-                status = "INVALID INPUT"
+                false,
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                "INVALID INPUT"
             )
         }
 
         val safePf =
-            pf.coerceIn(
-                0.01,
-                1.0
-            )
+            pf.coerceIn(0.01, 1.0)
 
         val safeLength =
             lengthM.coerceAtLeast(0.0)
-
-        // -------------------------
-        // VOLTAGE DROP CALCULATION
-        // -------------------------
 
         fun calculateDrop(
             cable: Cable
         ): Pair<Double, Double> {
 
-            /*
-             * Preliminary resistance model.
-             *
-             * Final engineering design should use
-             * actual cable manufacturer resistance/
-             * reactance data and applicable IEC tables.
-             */
             val rOhmPerKm =
                 18.1 / cable.sizeMm2
 
@@ -369,9 +353,9 @@ object ElectricalCalculator {
             )
         }
 
-        // =========================
-        // MANUAL CABLE SELECTION
-        // =========================
+        // -------------------------
+        // MANUAL CABLE
+        // -------------------------
 
         if (
             requestedCableSizeMm2 != null
@@ -389,13 +373,12 @@ object ElectricalCalculator {
             if (cable == null) {
 
                 return CableResult(
-                    success = false,
-                    sizeMm2 = 0.0,
-                    ampacityA = 0.0,
-                    voltageDropV = 0.0,
-                    voltageDropPercent = 0.0,
-                    status =
-                        "CABLE SIZE NOT AVAILABLE"
+                    false,
+                    0.0,
+                    0.0,
+                    0.0,
+                    0.0,
+                    "CABLE SIZE NOT AVAILABLE"
                 )
             }
 
@@ -447,18 +430,18 @@ object ElectricalCalculator {
                 dropPercent
 
             return CableResult(
-                success = success,
-                sizeMm2 = cable.sizeMm2,
-                ampacityA = cable.ampacityA,
-                voltageDropV = drop,
-                voltageDropPercent = dropPercent,
-                status = status
+                success,
+                cable.sizeMm2,
+                cable.ampacityA,
+                drop,
+                dropPercent,
+                status
             )
         }
 
-        // =========================
-        // AUTOMATIC CABLE SELECTION
-        // =========================
+        // -------------------------
+        // AUTOMATIC CABLE
+        // -------------------------
 
         val selectedCable =
             cables.firstOrNull { cable ->
@@ -468,19 +451,9 @@ object ElectricalCalculator {
                     dropPercent
                 ) = calculateDrop(cable)
 
-                val ampacityPass =
-                    cable.ampacityA >= currentA
-
-                val voltageDropPass =
-                    dropPercent <= 3.0
-
-                ampacityPass &&
-                        voltageDropPass
+                cable.ampacityA >= currentA &&
+                        dropPercent <= 3.0
             }
-
-        // =========================
-        // NO CABLE MEETS BOTH
-        // =========================
 
         if (selectedCable == null) {
 
@@ -512,30 +485,19 @@ object ElectricalCalculator {
             voltageDropPercent =
                 dropPercent
 
-            val status =
+            return CableResult(
+                false,
+                largestCable.sizeMm2,
+                largestCable.ampacityA,
+                drop,
+                dropPercent,
                 if (!ampacityPass) {
                     "NO AVAILABLE CABLE SIZE"
                 } else {
                     "NO CABLE MEETS REQUIREMENTS"
                 }
-
-            return CableResult(
-                success = false,
-                sizeMm2 =
-                    largestCable.sizeMm2,
-                ampacityA =
-                    largestCable.ampacityA,
-                voltageDropV =
-                    drop,
-                voltageDropPercent =
-                    dropPercent,
-                status = status
             )
         }
-
-        // =========================
-        // SAVE AUTOMATIC RESULT
-        // =========================
 
         val (
             drop,
@@ -560,17 +522,12 @@ object ElectricalCalculator {
             dropPercent
 
         return CableResult(
-            success = true,
-            sizeMm2 =
-                selectedCable.sizeMm2,
-            ampacityA =
-                selectedCable.ampacityA,
-            voltageDropV =
-                drop,
-            voltageDropPercent =
-                dropPercent,
-            status =
-                "AUTO SELECTED - PASS"
+            true,
+            selectedCable.sizeMm2,
+            selectedCable.ampacityA,
+            drop,
+            dropPercent,
+            "AUTO SELECTED - PASS"
         )
     }
 
@@ -624,6 +581,16 @@ object ElectricalCalculator {
     // BREAKER SELECTION
     // =========================
 
+    /**
+     * Automatically selects the smallest standard breaker
+     * satisfying:
+     *
+     * 1. Breaker rating >= design current
+     * 2. Breaker Icu >= prospective short-circuit current
+     *
+     * Manual selection is handled by BreakerSelectionScreen
+     * and uses validateBreaker().
+     */
     fun selectBreaker(
         currentA: Double,
         faultCurrentKA: Double
@@ -635,10 +602,10 @@ object ElectricalCalculator {
         ) {
 
             return BreakerResult(
-                false,
-                0,
-                0.0,
-                "INVALID INPUT"
+                success = false,
+                ratingA = 0,
+                icuKA = 0.0,
+                status = "INVALID INPUT"
             )
         }
 
@@ -646,51 +613,29 @@ object ElectricalCalculator {
             breakerRatings.firstOrNull {
                 it >= currentA
             }
-                ?: return BreakerResult(
-                    false,
-                    0,
-                    0.0,
-                    "NO SUITABLE BREAKER"
-                )
 
-        val icu =
-            when {
-
-                faultCurrentKA <= 6.0 ->
-                    6.0
-
-                faultCurrentKA <= 10.0 ->
-                    10.0
-
-                faultCurrentKA <= 15.0 ->
-                    15.0
-
-                faultCurrentKA <= 25.0 ->
-                    25.0
-
-                faultCurrentKA <= 36.0 ->
-                    36.0
-
-                faultCurrentKA <= 50.0 ->
-                    50.0
-
-                faultCurrentKA <= 65.0 ->
-                    65.0
-
-                faultCurrentKA <= 100.0 ->
-                    100.0
-
-                else ->
-                    0.0
-            }
-
-        if (icu <= 0.0) {
+        if (rating == null) {
 
             return BreakerResult(
-                false,
-                rating,
-                0.0,
-                "FAULT CURRENT EXCEEDS BREAKER DATA"
+                success = false,
+                ratingA = 0,
+                icuKA = 0.0,
+                status = "NO SUITABLE BREAKER RATING"
+            )
+        }
+
+        val icu =
+            breakerIcuRatings.firstOrNull {
+                it >= faultCurrentKA
+            }
+
+        if (icu == null) {
+
+            return BreakerResult(
+                success = false,
+                ratingA = rating,
+                icuKA = 0.0,
+                status = "FAULT CURRENT EXCEEDS BREAKER DATA"
             )
         }
 
@@ -701,10 +646,96 @@ object ElectricalCalculator {
             icu
 
         return BreakerResult(
-            true,
-            rating,
-            icu,
-            "PASS"
+            success = true,
+            ratingA = rating,
+            icuKA = icu,
+            status = "AUTO SELECTED - PASS"
+        )
+    }
+
+    /**
+     * Validates a manually selected breaker.
+     */
+    fun validateBreaker(
+        currentA: Double,
+        faultCurrentKA: Double,
+        breakerRatingA: Int,
+        breakerIcuKA: Double
+    ): BreakerResult {
+
+        if (
+            currentA < 0.0 ||
+            faultCurrentKA < 0.0 ||
+            breakerRatingA <= 0 ||
+            breakerIcuKA <= 0.0
+        ) {
+
+            return BreakerResult(
+                false,
+                breakerRatingA,
+                breakerIcuKA,
+                "INVALID INPUT"
+            )
+        }
+
+        val ratingIsStandard =
+            breakerRatings.contains(
+                breakerRatingA
+            )
+
+        val icuIsStandard =
+            breakerIcuRatings.any {
+                abs(it - breakerIcuKA) < 0.0001
+            }
+
+        val ratingPass =
+            breakerRatingA >= currentA
+
+        val icuPass =
+            breakerIcuKA >= faultCurrentKA
+
+        val success =
+            ratingIsStandard &&
+                    icuIsStandard &&
+                    ratingPass &&
+                    icuPass
+
+        val status =
+            when {
+
+                success ->
+                    "PASS - SELECTED BREAKER"
+
+                !ratingIsStandard ->
+                    "FAIL: NON-STANDARD BREAKER RATING"
+
+                !icuIsStandard ->
+                    "FAIL: NON-STANDARD ICU"
+
+                !ratingPass &&
+                        !icuPass ->
+                    "FAIL: RATING AND ICU"
+
+                !ratingPass ->
+                    "FAIL: BREAKER RATING"
+
+                else ->
+                    "FAIL: BREAKER ICU"
+            }
+
+        if (success) {
+            this.breakerRatingA =
+                breakerRatingA
+
+            this.breakerIcuKA =
+                breakerIcuKA
+        }
+
+        return BreakerResult(
+            success = success,
+            ratingA = breakerRatingA,
+            icuKA = breakerIcuKA,
+            status = status
         )
     }
 
@@ -750,7 +781,7 @@ object ElectricalCalculator {
                     (
                         1.0 +
                                 marginPercent / 100.0
-                        )
+                    )
 
         val selected =
             transformerRatings.firstOrNull {
@@ -944,7 +975,7 @@ object ElectricalCalculator {
     )
 
     // =========================
-    // RESET PROJECT
+    // RESET
     // =========================
 
     fun reset() {
