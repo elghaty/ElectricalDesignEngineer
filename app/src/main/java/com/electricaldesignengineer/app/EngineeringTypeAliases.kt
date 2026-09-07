@@ -1,10 +1,14 @@
 package com.electricaldesignengineer.app
 
-typealias InstallationMethod =
-    EngineeringDesignEngine.InstallationMethod
+/**
+ * Compatibility aliases.
+ *
+ * The actual engineering domain types now live independently in
+ * EngineeringTypes.kt and are no longer owned by EngineeringDesignEngine.
+ */
 
-typealias CableMaterial =
-    EngineeringDesignEngine.CableMaterial
+typealias InstallationMethod = com.electricaldesignengineer.app.InstallationMethod
 
-typealias InsulationType =
-    EngineeringDesignEngine.InsulationType
+typealias CableMaterial = com.electricaldesignengineer.app.CableMaterial
+
+typealias InsulationType = com.electricaldesignengineer.app.InsulationType
