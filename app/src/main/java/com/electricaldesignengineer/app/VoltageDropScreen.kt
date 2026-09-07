@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -252,25 +251,25 @@ fun VoltageDropScreen(
 
                     result = """
                         VOLTAGE DROP RESULT
-                        
+
                         Cable:
                         %.1f mm²
-                        
+
                         Current:
                         %.2f A
-                        
+
                         Cable Length:
                         %.1f m
-                        
+
                         System Voltage:
                         %.0f V
-                        
+
                         Voltage Drop:
                         %.2f V
-                        
+
                         Voltage Drop:
                         %.2f %%
-                        
+
                         Design Status:
                         %s
                     """.trimIndent().format(
