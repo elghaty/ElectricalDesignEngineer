@@ -1,20 +1,21 @@
 package com.electricaldesignengineer.app
 
-import kotlin.math.sqrt
-import kotlin.math.tan
 import kotlin.math.acos
 import kotlin.math.max
+import kotlin.math.sqrt
+import kotlin.math.tan
 
 /**
  * Central electrical calculation engine.
  *
- * All modules share these values so that the result of one calculation
- * becomes the input of the next calculation.
+ * This version keeps the existing public APIs compatible with the app
+ * while improving input validation and cable selection.
  *
- * NOTE:
- * This is the first engineering engine version.
- * Final project-grade design will later add IEC tables, installation
- * methods, correction factors, coordination and detailed equipment data.
+ * Engineering note:
+ * Cable ampacity and impedance values are preliminary engineering data.
+ * Final project design must apply the applicable IEC tables, installation
+ * method, ambient temperature, grouping, conductor material, insulation,
+ * correction factors and manufacturer data.
  */
 object ElectricalCalculator {
 
@@ -152,30 +153,38 @@ object ElectricalCalculator {
         threePhase: Boolean
     ): LoadResult {
 
-        val connected = max(0.0, quantity) *
-                max(0.0, powerKWPerLoad)
+        val safeQuantity = quantity.coerceAtLeast(0.0)
+        val safePower = powerKWPerLoad.coerceAtLeast(0.0)
+        val safeDemandFactor = demandFactor.coerceIn(0.0, 1.0)
+        val safePf = pf.coerceIn(0.01, 1.0)
+        val safeVoltage = voltage.coerceAtLeast(0.0)
 
-        val demand = connected *
-                demandFactor.coerceIn(0.0, 1.0)
+        val connected =
+            safeQuantity * safePower
 
-        val kva = if (pf > 0.0) {
-            demand / pf
-        } else {
-            0.0
-        }
+        val demand =
+            connected * safeDemandFactor
 
-        val current = if (threePhase) {
-            threePhaseCurrent(kva, voltage)
-        } else {
-            singlePhaseCurrent(kva, voltage)
-        }
+        val kva =
+            if (safePf > 0.0) {
+                demand / safePf
+            } else {
+                0.0
+            }
+
+        val current =
+            if (threePhase) {
+                threePhaseCurrent(kva, safeVoltage)
+            } else {
+                singlePhaseCurrent(kva, safeVoltage)
+            }
 
         connectedKW = connected
         demandKW = demand
         totalKVA = kva
         designCurrentA = current
-        powerFactor = pf
-        voltageV = voltage
+        powerFactor = safePf
+        voltageV = safeVoltage
         isThreePhase = threePhase
 
         return LoadResult(
@@ -226,82 +235,159 @@ object ElectricalCalculator {
     // CABLE SIZING
     // =========================
 
+    /**
+     * Automatically selects the smallest standard cable capable of
+     * carrying the design current.
+     *
+     * If requestedCableSizeMm2 is supplied, that exact standard cable
+     * is evaluated instead.
+     */
     fun selectCable(
         currentA: Double,
         lengthM: Double,
         voltage: Double,
         pf: Double,
-        threePhase: Boolean
+        threePhase: Boolean,
+        requestedCableSizeMm2: Double? = null
     ): CableResult {
 
-        val cable = cables.firstOrNull {
-            it.ampacityA >= currentA
+        if (currentA < 0.0 || lengthM < 0.0 || voltage <= 0.0) {
+            return CableResult(
+                success = false,
+                sizeMm2 = 0.0,
+                ampacityA = 0.0,
+                voltageDropV = 0.0,
+                voltageDropPercent = 0.0,
+                status = "INVALID INPUT"
+            )
+        }
+
+        val safePf =
+            pf.coerceIn(0.01, 1.0)
+
+        val safeLength =
+            lengthM.coerceAtLeast(0.0)
+
+        val cable = if (requestedCableSizeMm2 != null) {
+
+            cables.firstOrNull {
+                kotlin.math.abs(
+                    it.sizeMm2 - requestedCableSizeMm2
+                ) < 0.0001
+            }
+
+        } else {
+
+            cables.firstOrNull {
+                it.ampacityA >= currentA
+            }
         }
 
         if (cable == null) {
+
             return CableResult(
-                false,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                "No available cable size"
+                success = false,
+                sizeMm2 = 0.0,
+                ampacityA = 0.0,
+                voltageDropV = 0.0,
+                voltageDropPercent = 0.0,
+                status =
+                    if (requestedCableSizeMm2 != null) {
+                        "CABLE SIZE NOT AVAILABLE"
+                    } else {
+                        "NO AVAILABLE CABLE SIZE"
+                    }
             )
         }
 
         val rOhmPerKm =
             18.1 / cable.sizeMm2
 
-        val xOhmPerKm = 0.08
+        val xOhmPerKm =
+            0.08
 
-        val sinPhi = sqrt(
-            (1.0 - pf * pf)
-                .coerceAtLeast(0.0)
-        )
+        val sinPhi =
+            sqrt(
+                max(
+                    1.0 - safePf * safePf,
+                    0.0
+                )
+            )
 
         val impedanceTerm =
-            rOhmPerKm * pf +
+            rOhmPerKm * safePf +
                     xOhmPerKm * sinPhi
 
-        val drop = if (threePhase) {
+        val drop =
+            if (threePhase) {
 
-            sqrt(3.0) *
-                    currentA *
-                    impedanceTerm *
-                    lengthM / 1000.0
+                sqrt(3.0) *
+                        currentA *
+                        impedanceTerm *
+                        safeLength /
+                        1000.0
 
-        } else {
+            } else {
 
-            2.0 *
-                    currentA *
-                    impedanceTerm *
-                    lengthM / 1000.0
-        }
+                2.0 *
+                        currentA *
+                        impedanceTerm *
+                        safeLength /
+                        1000.0
+            }
 
         val dropPercent =
-            if (voltage > 0.0) {
-                drop / voltage * 100.0
-            } else {
-                0.0
-            }
+            drop /
+                    voltage *
+                    100.0
 
-        cableSizeMm2 = cable.sizeMm2
-        cableAmpacityA = cable.ampacityA
-        cableLengthM = lengthM
-        voltageDropV = drop
-        voltageDropPercent = dropPercent
+        cableSizeMm2 =
+            cable.sizeMm2
+
+        cableAmpacityA =
+            cable.ampacityA
+
+        cableLengthM =
+            safeLength
+
+        voltageDropV =
+            drop
+
+        voltageDropPercent =
+            dropPercent
+
+        val ampacityPass =
+            cable.ampacityA >= currentA
+
+        val voltageDropPass =
+            dropPercent <= 3.0
+
+        val status =
+            when {
+                !ampacityPass &&
+                        !voltageDropPass ->
+                    "FAIL: AMPACITY AND VOLTAGE DROP"
+
+                !ampacityPass ->
+                    "FAIL: CABLE AMPACITY"
+
+                !voltageDropPass ->
+                    "CHECK VOLTAGE DROP"
+
+                requestedCableSizeMm2 != null ->
+                    "PASS - SELECTED CABLE"
+
+                else ->
+                    "PASS"
+            }
 
         return CableResult(
-            true,
-            cable.sizeMm2,
-            cable.ampacityA,
-            drop,
-            dropPercent,
-            if (dropPercent <= 3.0) {
-                "PASS"
-            } else {
-                "CHECK VOLTAGE DROP"
-            }
+            success = ampacityPass,
+            sizeMm2 = cable.sizeMm2,
+            ampacityA = cable.ampacityA,
+            voltageDropV = drop,
+            voltageDropPercent = dropPercent,
+            status = status
         )
     }
 
@@ -329,6 +415,7 @@ object ElectricalCalculator {
             voltage <= 0.0 ||
             impedancePercent <= 0.0
         ) {
+            shortCircuitKA = 0.0
             return 0.0
         }
 
@@ -357,6 +444,18 @@ object ElectricalCalculator {
         faultCurrentKA: Double
     ): BreakerResult {
 
+        if (
+            currentA < 0.0 ||
+            faultCurrentKA < 0.0
+        ) {
+            return BreakerResult(
+                false,
+                0,
+                0.0,
+                "INVALID INPUT"
+            )
+        }
+
         val rating =
             breakerRatings.firstOrNull {
                 it >= currentA
@@ -364,40 +463,37 @@ object ElectricalCalculator {
                 false,
                 0,
                 0.0,
-                "No suitable breaker"
+                "NO SUITABLE BREAKER"
             )
 
-        /*
-         * Preliminary selection:
-         * Icu must be >= prospective short circuit current.
-         *
-         * We select the smallest common breaking capacity
-         * that satisfies the calculated fault current.
-         */
+        val icu =
+            when {
+                faultCurrentKA <= 6.0 -> 6.0
+                faultCurrentKA <= 10.0 -> 10.0
+                faultCurrentKA <= 15.0 -> 15.0
+                faultCurrentKA <= 25.0 -> 25.0
+                faultCurrentKA <= 36.0 -> 36.0
+                faultCurrentKA <= 50.0 -> 50.0
+                faultCurrentKA <= 65.0 -> 65.0
+                faultCurrentKA <= 100.0 -> 100.0
+                else -> 0.0
+            }
 
-        val icu = when {
-            faultCurrentKA <= 6.0 -> 6.0
-            faultCurrentKA <= 10.0 -> 10.0
-            faultCurrentKA <= 15.0 -> 15.0
-            faultCurrentKA <= 25.0 -> 25.0
-            faultCurrentKA <= 36.0 -> 36.0
-            faultCurrentKA <= 50.0 -> 50.0
-            faultCurrentKA <= 65.0 -> 65.0
-            faultCurrentKA <= 100.0 -> 100.0
-            else -> 0.0
-        }
+        if (icu <= 0.0) {
 
-        if (icu == 0.0) {
             return BreakerResult(
                 false,
                 rating,
                 0.0,
-                "Fault current exceeds preliminary breaker data"
+                "FAULT CURRENT EXCEEDS BREAKER DATA"
             )
         }
 
-        breakerRatingA = rating
-        breakerIcuKA = icu
+        breakerRatingA =
+            rating
+
+        breakerIcuKA =
+            icu
 
         return BreakerResult(
             true,
@@ -424,12 +520,20 @@ object ElectricalCalculator {
         marginPercent: Double = 20.0
     ): Double {
 
-        if (demandKW <= 0.0 || pf <= 0.0) {
+        if (
+            demandKW <= 0.0 ||
+            pf <= 0.0 ||
+            marginPercent < 0.0
+        ) {
+            transformerKVA = 0.0
             return 0.0
         }
 
+        val safePf =
+            pf.coerceIn(0.01, 1.0)
+
         val requiredKVA =
-            demandKW / pf
+            demandKW / safePf
 
         val withMargin =
             requiredKVA *
@@ -440,7 +544,8 @@ object ElectricalCalculator {
                 it >= withMargin
             } ?: withMargin
 
-        transformerKVA = selected
+        transformerKVA =
+            selected
 
         return selected
     }
@@ -459,28 +564,38 @@ object ElectricalCalculator {
         if (
             demandKW <= 0.0 ||
             pf <= 0.0 ||
-            loadingPercent <= 0.0
+            loadingPercent <= 0.0 ||
+            motorAllowancePercent < 0.0
         ) {
+            generatorKVA = 0.0
             return 0.0
         }
 
+        val safePf =
+            pf.coerceIn(0.01, 1.0)
+
+        val safeLoading =
+            loadingPercent.coerceIn(1.0, 100.0)
+
         val loadKVA =
-            demandKW / pf
+            demandKW / safePf
 
         val motorAllowance =
             loadKVA *
-                    motorAllowancePercent / 100.0
+                    motorAllowancePercent /
+                    100.0
 
         val required =
             (loadKVA + motorAllowance) /
-                    (loadingPercent / 100.0)
+                    (safeLoading / 100.0)
 
         val selected =
             generatorRatings.firstOrNull {
                 it >= required
             } ?: required
 
-        generatorKVA = selected
+        generatorKVA =
+            selected
 
         return selected
     }
@@ -500,28 +615,47 @@ object ElectricalCalculator {
             existingPF <= 0.0 ||
             targetPF <= 0.0
         ) {
+            capacitorKVAR = 0.0
             return 0.0
         }
 
         val pf1 =
-            existingPF.coerceIn(0.01, 0.9999)
+            existingPF.coerceIn(
+                0.01,
+                0.9999
+            )
 
         val pf2 =
-            targetPF.coerceIn(0.01, 0.9999)
+            targetPF.coerceIn(
+                0.01,
+                0.9999
+            )
 
-        val phi1 = acos(pf1)
-        val phi2 = acos(pf2)
+        if (pf2 <= pf1) {
+            capacitorKVAR = 0.0
+            return 0.0
+        }
+
+        val phi1 =
+            acos(pf1)
+
+        val phi2 =
+            acos(pf2)
 
         val q1 =
-            activePowerKW * tan(phi1)
+            activePowerKW *
+                    tan(phi1)
 
         val q2 =
-            activePowerKW * tan(phi2)
+            activePowerKW *
+                    tan(phi2)
 
         val qc =
-            (q1 - q2).coerceAtLeast(0.0)
+            (q1 - q2)
+                .coerceAtLeast(0.0)
 
-        capacitorKVAR = qc
+        capacitorKVAR =
+            qc
 
         return qc
     }
@@ -538,12 +672,13 @@ object ElectricalCalculator {
 
         if (
             earthResistanceOhm < 0.0 ||
-            faultCurrentA <= 0.0
+            faultCurrentA <= 0.0 ||
+            permissibleTouchVoltageV <= 0.0
         ) {
             return EarthingResult(
-                0.0,
-                0.0,
-                "INVALID INPUT"
+                earthPotentialRiseV = 0.0,
+                maximumResistanceOhm = 0.0,
+                status = "INVALID INPUT"
             )
         }
 
@@ -556,16 +691,19 @@ object ElectricalCalculator {
                     faultCurrentA
 
         val status =
-            if (earthResistanceOhm <= maxResistance) {
+            if (
+                earthResistanceOhm <=
+                maxResistance
+            ) {
                 "PASS"
             } else {
                 "CHECK EARTHING"
             }
 
         return EarthingResult(
-            epr,
-            maxResistance,
-            status
+            earthPotentialRiseV = epr,
+            maximumResistanceOhm = maxResistance,
+            status = status
         )
     }
 
