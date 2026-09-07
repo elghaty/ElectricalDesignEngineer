@@ -10,6 +10,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +24,8 @@ data class DesignModule(
 )
 
 private val modules = listOf(
+    DesignModule("Project Management", "Project details & design basis"),
+    DesignModule("Single Line Diagram", "Build and review SLD"),
     DesignModule("Load Calculation", "Calculate electrical loads"),
     DesignModule("Cable Sizing", "Select cable size"),
     DesignModule("Voltage Drop", "Check voltage drop"),
@@ -44,13 +48,9 @@ fun MainScreen(
             .padding(16.dp)
     ) {
 
+        Text(text = "ELECTRICAL STUDIO", style = MaterialTheme.typography.headlineMedium)
         Text(
-            text = "Electrical Design Engineer",
-            style = MaterialTheme.typography.headlineMedium
-        )
-
-        Text(
-            text = "Electrical Design & Calculation",
+            text = "Professional design workspace · IEC oriented",
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.padding(top = 8.dp, bottom = 16.dp)
         )
@@ -64,15 +64,19 @@ fun MainScreen(
         ) {
             items(modules) { module ->
 
-                Button(
+                Card(
                     onClick = {
                         onModuleSelected(module)
                     },
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(2.dp)
                 ) {
                     Column(
+                        modifier = Modifier.padding(14.dp),
                         horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
                     ) {
                         Text(text = module.title)

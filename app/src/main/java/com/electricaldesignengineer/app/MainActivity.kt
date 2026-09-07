@@ -5,6 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -17,7 +18,14 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MaterialTheme {
+            MaterialTheme(
+                colorScheme = darkColorScheme(
+                    primary = androidx.compose.ui.graphics.Color(0xFF65D5FF),
+                    secondary = androidx.compose.ui.graphics.Color(0xFF6CE5B1),
+                    surface = androidx.compose.ui.graphics.Color(0xFF111B2E),
+                    background = androidx.compose.ui.graphics.Color(0xFF091321)
+                )
+            ) {
                 Surface {
                     ElectricalDesignApp()
                 }
@@ -99,6 +107,12 @@ fun ElectricalDesignApp() {
 
         "Load Schedule" -> {
             LoadScheduleScreen {
+                selectedModule = null
+            }
+        }
+
+        "Single Line Diagram" -> {
+            SingleLineDiagramScreen {
                 selectedModule = null
             }
         }
