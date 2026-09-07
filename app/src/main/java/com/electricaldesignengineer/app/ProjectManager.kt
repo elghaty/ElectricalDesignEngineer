@@ -5,13 +5,11 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
-/**
- * Central project state.
- *
- * Compose observes calculation and loads so every screen is refreshed
- * immediately after a calculation or load-list change.
- */
 object ProjectManager {
+
+    // =========================
+    // CURRENT PROJECT
+    // =========================
 
     var calculation: ProjectCalculation by mutableStateOf(
         ProjectCalculation()
@@ -23,9 +21,9 @@ object ProjectManager {
     val loads: List<LoadItem>
         get() = _loads
 
-    // --------------------------------------------------
-    // PROJECT
-    // --------------------------------------------------
+    // =========================
+    // NEW PROJECT
+    // =========================
 
     fun startNewProject(
         projectName: String = "",
@@ -45,6 +43,10 @@ object ProjectManager {
         ElectricalCalculator.reset()
     }
 
+    // =========================
+    // PROJECT INFORMATION
+    // =========================
+
     fun updateProjectInfo(
         projectName: String = calculation.projectName,
         clientName: String = calculation.clientName,
@@ -59,9 +61,9 @@ object ProjectManager {
         )
     }
 
-    // --------------------------------------------------
-    // ELECTRICAL SYSTEM
-    // --------------------------------------------------
+    // =========================
+    // SYSTEM
+    // =========================
 
     fun updateSystem(
         voltageV: Double = calculation.voltageV,
@@ -79,9 +81,9 @@ object ProjectManager {
         syncToElectricalCalculator()
     }
 
-    // --------------------------------------------------
+    // =========================
     // LOADS
-    // --------------------------------------------------
+    // =========================
 
     fun addLoad(load: LoadItem) {
         _loads.add(load)
@@ -95,10 +97,6 @@ object ProjectManager {
         _loads.clear()
         calculateFromLoads()
     }
-
-    // --------------------------------------------------
-    // LOAD CALCULATION
-    // --------------------------------------------------
 
     fun calculateFromLoads(): ProjectCalculation {
 
@@ -114,10 +112,16 @@ object ProjectManager {
 
             val demand =
                 connected *
-                        load.demandFactor.coerceIn(0.0, 1.0)
+                        load.demandFactor.coerceIn(
+                            0.0,
+                            1.0
+                        )
 
             val pf =
-                load.powerFactor.coerceIn(0.01, 1.0)
+                load.powerFactor.coerceIn(
+                    0.01,
+                    1.0
+                )
 
             connectedKW += connected
             demandKW += demand
@@ -127,13 +131,20 @@ object ProjectManager {
         val effectivePF =
             if (totalKVA > 0.0) {
 
-                (demandKW / totalKVA)
-                    .coerceIn(0.01, 1.0)
+                (
+                    demandKW /
+                            totalKVA
+                    ).coerceIn(
+                        0.01,
+                        1.0
+                    )
 
             } else {
 
-                calculation.powerFactor
-                    .coerceIn(0.01, 1.0)
+                calculation.powerFactor.coerceIn(
+                    0.01,
+                    1.0
+                )
             }
 
         val designCurrentA =
@@ -186,7 +197,6 @@ object ProjectManager {
         powerFactor: Double = calculation.powerFactor,
         isThreePhase: Boolean = calculation.isThreePhase
     ) {
-
         calculation = calculation.copy(
 
             connectedKW =
@@ -205,7 +215,10 @@ object ProjectManager {
                 voltageV.coerceAtLeast(0.0),
 
             powerFactor =
-                powerFactor.coerceIn(0.01, 1.0),
+                powerFactor.coerceIn(
+                    0.01,
+                    1.0
+                ),
 
             isThreePhase =
                 isThreePhase,
@@ -217,9 +230,9 @@ object ProjectManager {
         syncToElectricalCalculator()
     }
 
-    // --------------------------------------------------
+    // =========================
     // CABLE
-    // --------------------------------------------------
+    // =========================
 
     fun setCableResult(
         cableSizeMm2: Double,
@@ -228,7 +241,6 @@ object ProjectManager {
         voltageDropV: Double,
         voltageDropPercent: Double
     ) {
-
         calculation = calculation.copy(
 
             cableSizeMm2 =
@@ -253,14 +265,13 @@ object ProjectManager {
         syncToElectricalCalculator()
     }
 
-    // --------------------------------------------------
+    // =========================
     // SHORT CIRCUIT
-    // --------------------------------------------------
+    // =========================
 
     fun setShortCircuit(
         shortCircuitKA: Double
     ) {
-
         calculation = calculation.copy(
 
             shortCircuitKA =
@@ -273,15 +284,14 @@ object ProjectManager {
         syncToElectricalCalculator()
     }
 
-    // --------------------------------------------------
+    // =========================
     // BREAKER
-    // --------------------------------------------------
+    // =========================
 
     fun setBreaker(
         breakerRatingA: Int,
         breakerIcuKA: Double
     ) {
-
         calculation = calculation.copy(
 
             breakerRatingA =
@@ -297,18 +307,24 @@ object ProjectManager {
         syncToElectricalCalculator()
     }
 
-    // --------------------------------------------------
+    // =========================
     // TRANSFORMER
-    // --------------------------------------------------
+    // =========================
 
     fun setTransformer(
-        transformerKVA: Double
+        transformerKVA: Double,
+        transformerImpedancePercent: Double =
+            calculation.transformerImpedancePercent
     ) {
-
         calculation = calculation.copy(
 
             transformerKVA =
                 transformerKVA.coerceAtLeast(0.0),
+
+            transformerImpedancePercent =
+                transformerImpedancePercent.coerceAtLeast(
+                    0.01
+                ),
 
             designStatus =
                 "TRANSFORMER SIZING COMPLETE"
@@ -317,14 +333,27 @@ object ProjectManager {
         syncToElectricalCalculator()
     }
 
-    // --------------------------------------------------
+    fun setTransformerImpedance(
+        transformerImpedancePercent: Double
+    ) {
+        calculation = calculation.copy(
+
+            transformerImpedancePercent =
+                transformerImpedancePercent.coerceAtLeast(
+                    0.01
+                )
+        )
+
+        syncToElectricalCalculator()
+    }
+
+    // =========================
     // GENERATOR
-    // --------------------------------------------------
+    // =========================
 
     fun setGenerator(
         generatorKVA: Double
     ) {
-
         calculation = calculation.copy(
 
             generatorKVA =
@@ -337,14 +366,13 @@ object ProjectManager {
         syncToElectricalCalculator()
     }
 
-    // --------------------------------------------------
+    // =========================
     // POWER FACTOR
-    // --------------------------------------------------
+    // =========================
 
     fun setCapacitorBank(
         capacitorKVAR: Double
     ) {
-
         calculation = calculation.copy(
 
             capacitorKVAR =
@@ -357,9 +385,9 @@ object ProjectManager {
         syncToElectricalCalculator()
     }
 
-    // --------------------------------------------------
+    // =========================
     // EARTHING
-    // --------------------------------------------------
+    // =========================
 
     fun setEarthing(
         earthResistanceOhm: Double,
@@ -367,7 +395,6 @@ object ProjectManager {
         earthPotentialRiseV: Double,
         maximumEarthResistanceOhm: Double
     ) {
-
         calculation = calculation.copy(
 
             earthResistanceOhm =
@@ -389,9 +416,9 @@ object ProjectManager {
         syncToElectricalCalculator()
     }
 
-    // --------------------------------------------------
-    // SYNCHRONIZE WITH ELECTRICAL CALCULATOR
-    // --------------------------------------------------
+    // =========================
+    // SYNC TO CALCULATOR
+    // =========================
 
     fun syncToElectricalCalculator() {
 
@@ -450,9 +477,9 @@ object ProjectManager {
             calculation.capacitorKVAR
     }
 
-    // --------------------------------------------------
-    // IMPORT OLD VALUES
-    // --------------------------------------------------
+    // =========================
+    // SYNC FROM CALCULATOR
+    // =========================
 
     fun syncFromElectricalCalculator() {
 
@@ -474,8 +501,10 @@ object ProjectManager {
                 ElectricalCalculator.voltageV,
 
             powerFactor =
-                ElectricalCalculator.powerFactor
-                    .coerceIn(0.01, 1.0),
+                ElectricalCalculator.powerFactor.coerceIn(
+                    0.01,
+                    1.0
+                ),
 
             isThreePhase =
                 ElectricalCalculator.isThreePhase,
@@ -515,9 +544,9 @@ object ProjectManager {
         )
     }
 
-    // --------------------------------------------------
+    // =========================
     // RESET
-    // --------------------------------------------------
+    // =========================
 
     fun reset() {
 
