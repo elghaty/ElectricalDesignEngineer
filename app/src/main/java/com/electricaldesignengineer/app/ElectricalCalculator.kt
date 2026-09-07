@@ -69,7 +69,8 @@ object ElectricalCalculator {
     var capacitorKVAR: Double = 0.0
 
     // =========================================================
-    // CABLE MODEL
+    // CABLE DATA
+    // Preliminary ampacity table
     // =========================================================
 
     data class Cable(
@@ -101,7 +102,7 @@ object ElectricalCalculator {
     val cableTable = cables
 
     // =========================================================
-    // BREAKER RATINGS
+    // BREAKER DATA
     // =========================================================
 
     val breakerRatings = listOf(
@@ -146,7 +147,7 @@ object ElectricalCalculator {
     )
 
     // =========================================================
-    // TRANSFORMER RATINGS
+    // TRANSFORMER DATA
     // =========================================================
 
     val transformerRatings = listOf(
@@ -169,7 +170,7 @@ object ElectricalCalculator {
     )
 
     // =========================================================
-    // GENERATOR RATINGS
+    // GENERATOR DATA
     // =========================================================
 
     val generatorRatings = listOf(
@@ -198,7 +199,7 @@ object ElectricalCalculator {
     )
 
     // =========================================================
-    // RESULT TYPES
+    // RESULT CLASSES
     // =========================================================
 
     data class LoadResult(
@@ -251,10 +252,10 @@ object ElectricalCalculator {
             designCurrentA = 0.0
 
             return LoadResult(
-                0.0,
-                0.0,
-                0.0,
-                0.0
+                connectedKW = 0.0,
+                demandKW = 0.0,
+                totalKVA = 0.0,
+                currentA = 0.0
             )
         }
 
@@ -287,10 +288,10 @@ object ElectricalCalculator {
         isThreePhase = threePhase
 
         return LoadResult(
-            connectedKW,
-            demandKW,
-            totalKVA,
-            designCurrentA
+            connectedKW = connectedKW,
+            demandKW = demandKW,
+            totalKVA = totalKVA,
+            currentA = designCurrentA
         )
     }
 
@@ -325,7 +326,12 @@ object ElectricalCalculator {
 
     // =========================================================
     // CABLE SELECTION
-    // ONLY ONE selectCable FUNCTION
+    //
+    // IMPORTANT:
+    // There is ONLY ONE selectCable function.
+    //
+    // Existing screens use:
+    // requestedCableSizeMm2
     // =========================================================
 
     fun selectCable(
@@ -352,7 +358,7 @@ object ElectricalCalculator {
             )
         }
 
-        val selected =
+        val selectedCable =
             if (requestedCableSizeMm2 != null) {
 
                 cables.firstOrNull {
@@ -369,7 +375,7 @@ object ElectricalCalculator {
                 }
             }
 
-        if (selected == null) {
+        if (selectedCable == null) {
             return CableResult(
                 success = false,
                 sizeMm2 = 0.0,
@@ -380,35 +386,20 @@ object ElectricalCalculator {
             )
         }
 
-        val safePF =
-            pf.coerceIn(0.01, 1.0)
+        val safePF = pf.coerceIn(0.01, 1.0)
 
-        val sinPhi =
-            sqrt(
-                max(
-                    0.0,
-                    1.0 - safePF.pow(2.0)
-                )
+        val sinPhi = sqrt(
+            max(
+                0.0,
+                1.0 - safePF.pow(2.0)
             )
+        )
 
-        /*
-         * Preliminary electrical model.
-         *
-         * This is intentionally kept simple for the current
-         * application stage.
-         *
-         * Later versions will include:
-         * - conductor material
-         * - installation method
-         * - ambient temperature
-         * - grouping factor
-         * - insulation type
-         * - correction factors
-         * - IEC/local code tables
-         */
+        // Preliminary resistance model.
+        // To be replaced later by IEC/code based tables.
 
         val resistance =
-            18.1 / selected.sizeMm2
+            18.1 / selectedCable.sizeMm2
 
         val reactance =
             0.08
@@ -441,7 +432,7 @@ object ElectricalCalculator {
                     100.0
 
         val ampacityPass =
-            selected.ampacityA >= currentA
+            selectedCable.ampacityA >= currentA
 
         val voltageDropPass =
             dropPercent <= 3.0
@@ -450,11 +441,13 @@ object ElectricalCalculator {
             ampacityPass &&
                     voltageDropPass
 
+        // Save selected result
+
         cableSizeMm2 =
-            selected.sizeMm2
+            selectedCable.sizeMm2
 
         cableAmpacityA =
-            selected.ampacityA
+            selectedCable.ampacityA
 
         cableLengthM =
             lengthM
@@ -483,8 +476,8 @@ object ElectricalCalculator {
 
         return CableResult(
             success = success,
-            sizeMm2 = selected.sizeMm2,
-            ampacityA = selected.ampacityA,
+            sizeMm2 = selectedCable.sizeMm2,
+            ampacityA = selectedCable.ampacityA,
             voltageDropV = dropV,
             voltageDropPercent = dropPercent,
             status = status
@@ -492,7 +485,7 @@ object ElectricalCalculator {
     }
 
     // =========================================================
-    // SHORT CIRCUIT
+    // TRANSFORMER SHORT CIRCUIT
     // =========================================================
 
     fun transformerShortCircuit(
@@ -519,11 +512,18 @@ object ElectricalCalculator {
             ratedCurrent /
                     (impedancePercent / 100.0)
 
-        return faultCurrent / 1000.0
+        val faultKA =
+            faultCurrent / 1000.0
+
+        shortCircuitKA =
+            faultKA
+
+        return faultKA
     }
 
     // =========================================================
     // BREAKER AUTO SELECTION
+    //
     // Ib <= In <= Iz
     // Icu >= Icc
     // =========================================================
@@ -539,28 +539,29 @@ object ElectricalCalculator {
             faultCurrentKA <= 0.0
         ) {
             return BreakerResult(
-                false,
-                0,
-                0.0,
-                "INVALID INPUT"
+                success = false,
+                ratingA = 0,
+                icuKA = 0.0,
+                status = "INVALID INPUT"
             )
         }
 
         if (cableAmpacityA <= 0.0) {
             return BreakerResult(
-                false,
-                0,
-                0.0,
-                "CABLE NOT SELECTED"
+                success = false,
+                ratingA = 0,
+                icuKA = 0.0,
+                status = "CABLE NOT SELECTED"
             )
         }
 
         if (currentA > cableAmpacityA) {
             return BreakerResult(
-                false,
-                0,
-                0.0,
-                "FAIL: DESIGN CURRENT EXCEEDS CABLE AMPACITY"
+                success = false,
+                ratingA = 0,
+                icuKA = 0.0,
+                status =
+                    "FAIL: DESIGN CURRENT EXCEEDS CABLE AMPACITY"
             )
         }
 
@@ -572,10 +573,11 @@ object ElectricalCalculator {
 
         if (rating == null) {
             return BreakerResult(
-                false,
-                0,
-                0.0,
-                "NO BREAKER SATISFIES Ib <= In <= Iz"
+                success = false,
+                ratingA = 0,
+                icuKA = 0.0,
+                status =
+                    "NO BREAKER SATISFIES Ib <= In <= Iz"
             )
         }
 
@@ -586,10 +588,11 @@ object ElectricalCalculator {
 
         if (icu == null) {
             return BreakerResult(
-                false,
-                rating,
-                0.0,
-                "FAULT CURRENT EXCEEDS BREAKER Icu DATA"
+                success = false,
+                ratingA = rating,
+                icuKA = 0.0,
+                status =
+                    "FAULT CURRENT EXCEEDS BREAKER Icu DATA"
             )
         }
 
@@ -600,10 +603,10 @@ object ElectricalCalculator {
             icu
 
         return BreakerResult(
-            true,
-            rating,
-            icu,
-            "AUTO SELECTED - PASS"
+            success = true,
+            ratingA = rating,
+            icuKA = icu,
+            status = "AUTO SELECTED - PASS"
         )
     }
 
@@ -626,19 +629,19 @@ object ElectricalCalculator {
             breakerIcuKA <= 0.0
         ) {
             return BreakerResult(
-                false,
-                breakerRatingA,
-                breakerIcuKA,
-                "INVALID INPUT"
+                success = false,
+                ratingA = breakerRatingA,
+                icuKA = breakerIcuKA,
+                status = "INVALID INPUT"
             )
         }
 
         if (cableAmpacityA <= 0.0) {
             return BreakerResult(
-                false,
-                breakerRatingA,
-                breakerIcuKA,
-                "CABLE NOT SELECTED"
+                success = false,
+                ratingA = breakerRatingA,
+                icuKA = breakerIcuKA,
+                status = "CABLE NOT SELECTED"
             )
         }
 
@@ -649,9 +652,7 @@ object ElectricalCalculator {
 
         val standardIcu =
             breakerIcuRatings.any {
-                abs(
-                    it - breakerIcuKA
-                ) < 0.0001
+                abs(it - breakerIcuKA) < 0.0001
             }
 
         val ibIn =
@@ -704,15 +705,15 @@ object ElectricalCalculator {
         }
 
         return BreakerResult(
-            success,
-            breakerRatingA,
-            breakerIcuKA,
-            status
+            success = success,
+            ratingA = breakerRatingA,
+            icuKA = breakerIcuKA,
+            status = status
         )
     }
 
     // =========================================================
-    // TRANSFORMER SIZING
+    // TRANSFORMER SELECTION
     // =========================================================
 
     fun selectTransformer(
@@ -732,10 +733,7 @@ object ElectricalCalculator {
             pf.coerceIn(0.01, 1.0)
 
         val margin =
-            max(
-                0.0,
-                marginPercent
-            )
+            max(0.0, marginPercent)
 
         val requiredKVA =
             demandKW /
@@ -745,7 +743,8 @@ object ElectricalCalculator {
         val selected =
             transformerRatings.firstOrNull {
                 it >= requiredKVA
-            } ?: return 0.0
+            }
+                ?: return 0.0
 
         transformerKVA =
             selected
@@ -754,7 +753,7 @@ object ElectricalCalculator {
     }
 
     // =========================================================
-    // GENERATOR SIZING
+    // GENERATOR SELECTION
     // =========================================================
 
     fun selectGenerator(
@@ -792,11 +791,8 @@ object ElectricalCalculator {
 
         val motorAdjustedKVA =
             baseKVA *
-                    (
-                        1.0 +
-                                motorAllowance /
-                                100.0
-                        )
+                    (1.0 +
+                            motorAllowance / 100.0)
 
         val requiredGeneratorKVA =
             motorAdjustedKVA /
@@ -805,7 +801,8 @@ object ElectricalCalculator {
         val selected =
             generatorRatings.firstOrNull {
                 it >= requiredGeneratorKVA
-            } ?: return 0.0
+            }
+                ?: return 0.0
 
         generatorKVA =
             selected
@@ -830,16 +827,12 @@ object ElectricalCalculator {
             existingPF > 1.0 ||
             targetPF > 1.0
         ) {
-            capacitorKVAR =
-                0.0
-
+            capacitorKVAR = 0.0
             return 0.0
         }
 
         if (targetPF <= existingPF) {
-            capacitorKVAR =
-                0.0
-
+            capacitorKVAR = 0.0
             return 0.0
         }
 
@@ -869,7 +862,6 @@ object ElectricalCalculator {
         return required
     }
 
-    // Compatibility alias
     fun calculateCapacitorBank(
         activePowerKW: Double,
         initialPF: Double,
@@ -900,17 +892,22 @@ object ElectricalCalculator {
         ) {
             return EarthingResult(
                 success = false,
-                earthResistanceOhm = earthResistanceOhm,
-                faultCurrentA = faultCurrentA,
-                earthPotentialRiseV = 0.0,
-                maximumResistanceOhm = 0.0,
-                status = "INVALID INPUT"
+                earthResistanceOhm =
+                    earthResistanceOhm,
+                faultCurrentA =
+                    faultCurrentA,
+                earthPotentialRiseV =
+                    0.0,
+                maximumResistanceOhm =
+                    0.0,
+                status =
+                    "INVALID INPUT"
             )
         }
 
-        val epr =
-            faultCurrentA *
-                    earthResistanceOhm
+        val earthPotentialRise =
+            earthResistanceOhm *
+                    faultCurrentA
 
         val maximumResistance =
             permissibleTouchVoltageV /
@@ -934,7 +931,7 @@ object ElectricalCalculator {
             faultCurrentA =
                 faultCurrentA,
             earthPotentialRiseV =
-                epr,
+                earthPotentialRise,
             maximumResistanceOhm =
                 maximumResistance,
             status =
@@ -1006,8 +1003,3 @@ object ElectricalCalculator {
             0.0
     }
 }
-
-مهم جدًا: امسح محتوى "ElectricalCalculator.kt" بالكامل والصق الملف ده بالكامل، ما تضيفش أي جزء من الملف القديم.
-السبب الأساسي في Build #78 كان تحديدًا وجود "selectCable" مرتين، والنسخة الجديدة فيها دالة واحدة فقط.
-
-بعد الـ Commit، سيبدأ Build جديد تلقائيًا. ما تعدلش أي ملف تاني دلوقتي؛ هنمشي على نتيجة الـ Build الجديد فقط.
