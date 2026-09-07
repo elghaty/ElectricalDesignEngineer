@@ -295,7 +295,7 @@ object ElectricalCalculator {
     }
 
     // =========================================================
-    // CURRENT
+    // CURRENT CALCULATIONS
     // =========================================================
 
     fun threePhaseCurrent(
@@ -325,7 +325,7 @@ object ElectricalCalculator {
 
     // =========================================================
     // CABLE SELECTION
-    // Compatible with VoltageDropScreen
+    // ONLY ONE selectCable FUNCTION
     // =========================================================
 
     fun selectCable(
@@ -343,24 +343,27 @@ object ElectricalCalculator {
             voltage <= 0.0
         ) {
             return CableResult(
-                false,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                "INVALID INPUT"
+                success = false,
+                sizeMm2 = 0.0,
+                ampacityA = 0.0,
+                voltageDropV = 0.0,
+                voltageDropPercent = 0.0,
+                status = "INVALID INPUT"
             )
         }
 
         val selected =
             if (requestedCableSizeMm2 != null) {
+
                 cables.firstOrNull {
                     abs(
                         it.sizeMm2 -
                                 requestedCableSizeMm2
                     ) < 0.0001
                 }
+
             } else {
+
                 cables.firstOrNull {
                     it.ampacityA >= currentA
                 }
@@ -368,16 +371,17 @@ object ElectricalCalculator {
 
         if (selected == null) {
             return CableResult(
-                false,
-                0.0,
-                0.0,
-                0.0,
-                0.0,
-                "NO SUITABLE CABLE"
+                success = false,
+                sizeMm2 = 0.0,
+                ampacityA = 0.0,
+                voltageDropV = 0.0,
+                voltageDropPercent = 0.0,
+                status = "NO SUITABLE CABLE"
             )
         }
 
-        val safePF = pf.coerceIn(0.01, 1.0)
+        val safePF =
+            pf.coerceIn(0.01, 1.0)
 
         val sinPhi =
             sqrt(
@@ -388,19 +392,26 @@ object ElectricalCalculator {
             )
 
         /*
-         * Preliminary resistance model.
-         * Final design will later include:
-         * conductor material,
-         * installation method,
-         * temperature,
-         * grouping,
-         * insulation,
-         * correction factors.
+         * Preliminary electrical model.
+         *
+         * This is intentionally kept simple for the current
+         * application stage.
+         *
+         * Later versions will include:
+         * - conductor material
+         * - installation method
+         * - ambient temperature
+         * - grouping factor
+         * - insulation type
+         * - correction factors
+         * - IEC/local code tables
          */
+
         val resistance =
             18.1 / selected.sizeMm2
 
-        val reactance = 0.08
+        val reactance =
+            0.08
 
         val voltageDropComponent =
             resistance * safePF +
@@ -408,12 +419,15 @@ object ElectricalCalculator {
 
         val dropV =
             if (threePhase) {
+
                 sqrt(3.0) *
                         currentA *
                         lengthM *
                         voltageDropComponent /
                         1000.0
+
             } else {
+
                 2.0 *
                         currentA *
                         lengthM *
@@ -422,7 +436,9 @@ object ElectricalCalculator {
             }
 
         val dropPercent =
-            dropV / voltage * 100.0
+            dropV /
+                    voltage *
+                    100.0
 
         val ampacityPass =
             selected.ampacityA >= currentA
@@ -434,14 +450,24 @@ object ElectricalCalculator {
             ampacityPass &&
                     voltageDropPass
 
-        cableSizeMm2 = selected.sizeMm2
-        cableAmpacityA = selected.ampacityA
-        cableLengthM = lengthM
-        voltageDropV = dropV
-        voltageDropPercent = dropPercent
+        cableSizeMm2 =
+            selected.sizeMm2
+
+        cableAmpacityA =
+            selected.ampacityA
+
+        cableLengthM =
+            lengthM
+
+        voltageDropV =
+            dropV
+
+        voltageDropPercent =
+            dropPercent
 
         val status =
             when {
+
                 success ->
                     "CABLE SELECTION PASS"
 
@@ -456,32 +482,12 @@ object ElectricalCalculator {
             }
 
         return CableResult(
-            success,
-            selected.sizeMm2,
-            selected.ampacityA,
-            dropV,
-            dropPercent,
-            status
-        )
-    }
-
-    // Backward-compatible overload
-    fun selectCable(
-        currentA: Double,
-        lengthM: Double,
-        voltage: Double,
-        pf: Double = powerFactor,
-        threePhase: Boolean = true,
-        manualSizeMm2: Double? = null
-    ): CableResult {
-
-        return selectCable(
-            currentA = currentA,
-            lengthM = lengthM,
-            voltage = voltage,
-            pf = pf,
-            threePhase = threePhase,
-            requestedCableSizeMm2 = manualSizeMm2
+            success = success,
+            sizeMm2 = selected.sizeMm2,
+            ampacityA = selected.ampacityA,
+            voltageDropV = dropV,
+            voltageDropPercent = dropPercent,
+            status = status
         )
     }
 
@@ -587,8 +593,11 @@ object ElectricalCalculator {
             )
         }
 
-        breakerRatingA = rating
-        breakerIcuKA = icu
+        breakerRatingA =
+            rating
+
+        breakerIcuKA =
+            icu
 
         return BreakerResult(
             true,
@@ -663,6 +672,7 @@ object ElectricalCalculator {
 
         val status =
             when {
+
                 success ->
                     "PASS - BREAKER FULL PROTECTION CHECK"
 
@@ -703,9 +713,6 @@ object ElectricalCalculator {
 
     // =========================================================
     // TRANSFORMER SIZING
-    // Compatible with TransformerSizingScreen
-    //
-    // Returns Double because ProjectManager expects kVA.
     // =========================================================
 
     fun selectTransformer(
@@ -725,7 +732,10 @@ object ElectricalCalculator {
             pf.coerceIn(0.01, 1.0)
 
         val margin =
-            max(0.0, marginPercent)
+            max(
+                0.0,
+                marginPercent
+            )
 
         val requiredKVA =
             demandKW /
@@ -737,16 +747,14 @@ object ElectricalCalculator {
                 it >= requiredKVA
             } ?: return 0.0
 
-        transformerKVA = selected
+        transformerKVA =
+            selected
 
         return selected
     }
 
     // =========================================================
     // GENERATOR SIZING
-    // Compatible with GeneratorSizingScreen
-    //
-    // Returns Double because ProjectManager expects kVA.
     // =========================================================
 
     fun selectGenerator(
@@ -779,11 +787,16 @@ object ElectricalCalculator {
             )
 
         val baseKVA =
-            demandKW / safePF
+            demandKW /
+                    safePF
 
         val motorAdjustedKVA =
             baseKVA *
-                    (1.0 + motorAllowance / 100.0)
+                    (
+                        1.0 +
+                                motorAllowance /
+                                100.0
+                        )
 
         val requiredGeneratorKVA =
             motorAdjustedKVA /
@@ -794,16 +807,14 @@ object ElectricalCalculator {
                 it >= requiredGeneratorKVA
             } ?: return 0.0
 
-        generatorKVA = selected
+        generatorKVA =
+            selected
 
         return selected
     }
 
     // =========================================================
     // POWER FACTOR CORRECTION
-    // Compatible with PowerFactorCorrectionScreen
-    //
-    // Returns kVAR.
     // =========================================================
 
     fun capacitorBank(
@@ -819,12 +830,16 @@ object ElectricalCalculator {
             existingPF > 1.0 ||
             targetPF > 1.0
         ) {
-            capacitorKVAR = 0.0
+            capacitorKVAR =
+                0.0
+
             return 0.0
         }
 
         if (targetPF <= existingPF) {
-            capacitorKVAR = 0.0
+            capacitorKVAR =
+                0.0
+
             return 0.0
         }
 
@@ -848,12 +863,13 @@ object ElectricalCalculator {
                 q1 - q2
             )
 
-        capacitorKVAR = required
+        capacitorKVAR =
+            required
 
         return required
     }
 
-    // New descriptive alias
+    // Compatibility alias
     fun calculateCapacitorBank(
         activePowerKW: Double,
         initialPF: Double,
@@ -861,23 +877,14 @@ object ElectricalCalculator {
     ): Double {
 
         return capacitorBank(
-            activePowerKW,
-            initialPF,
-            targetPF
+            activePowerKW = activePowerKW,
+            existingPF = initialPF,
+            targetPF = targetPF
         )
     }
 
     // =========================================================
-    // EARTHING
-    // Compatible with EarthingScreen
-    //
-    // Input:
-    // earth resistance
-    // fault current
-    // permissible touch voltage
-    //
-    // EPR = If x R
-    // Rmax = Vtouch / If
+    // EARTHING CHECK
     // =========================================================
 
     fun earthCheck(
@@ -892,12 +899,12 @@ object ElectricalCalculator {
             permissibleTouchVoltageV <= 0.0
         ) {
             return EarthingResult(
-                false,
-                earthResistanceOhm,
-                faultCurrentA,
-                0.0,
-                0.0,
-                "INVALID INPUT"
+                success = false,
+                earthResistanceOhm = earthResistanceOhm,
+                faultCurrentA = faultCurrentA,
+                earthPotentialRiseV = 0.0,
+                maximumResistanceOhm = 0.0,
+                status = "INVALID INPUT"
             )
         }
 
@@ -930,7 +937,8 @@ object ElectricalCalculator {
                 epr,
             maximumResistanceOhm =
                 maximumResistance,
-            status = status
+            status =
+                status
         )
     }
 
@@ -940,31 +948,66 @@ object ElectricalCalculator {
 
     fun reset() {
 
-        voltageV = 400.0
-        powerFactor = 0.90
-        isThreePhase = true
+        voltageV =
+            400.0
 
-        connectedKW = 0.0
-        demandKW = 0.0
-        totalKVA = 0.0
-        designCurrentA = 0.0
+        powerFactor =
+            0.90
 
-        cableSizeMm2 = 0.0
-        cableAmpacityA = 0.0
-        cableLengthM = 0.0
-        voltageDropV = 0.0
-        voltageDropPercent = 0.0
+        isThreePhase =
+            true
 
-        shortCircuitKA = 0.0
+        connectedKW =
+            0.0
 
-        breakerRatingA = 0
-        breakerIcuKA = 0.0
+        demandKW =
+            0.0
 
-        transformerKVA = 0.0
-        transformerImpedancePercent = 6.0
+        totalKVA =
+            0.0
 
-        generatorKVA = 0.0
+        designCurrentA =
+            0.0
 
-        capacitorKVAR = 0.0
+        cableSizeMm2 =
+            0.0
+
+        cableAmpacityA =
+            0.0
+
+        cableLengthM =
+            0.0
+
+        voltageDropV =
+            0.0
+
+        voltageDropPercent =
+            0.0
+
+        shortCircuitKA =
+            0.0
+
+        breakerRatingA =
+            0
+
+        breakerIcuKA =
+            0.0
+
+        transformerKVA =
+            0.0
+
+        transformerImpedancePercent =
+            6.0
+
+        generatorKVA =
+            0.0
+
+        capacitorKVAR =
+            0.0
     }
 }
+
+مهم جدًا: امسح محتوى "ElectricalCalculator.kt" بالكامل والصق الملف ده بالكامل، ما تضيفش أي جزء من الملف القديم.
+السبب الأساسي في Build #78 كان تحديدًا وجود "selectCable" مرتين، والنسخة الجديدة فيها دالة واحدة فقط.
+
+بعد الـ Commit، سيبدأ Build جديد تلقائيًا. ما تعدلش أي ملف تاني دلوقتي؛ هنمشي على نتيجة الـ Build الجديد فقط.
