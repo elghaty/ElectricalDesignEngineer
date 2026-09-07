@@ -11,14 +11,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -54,22 +53,28 @@ fun VoltageDropScreen(
     }
 
     var voltage by remember {
-        mutableStateOf(project.voltageV.toString())
+        mutableStateOf(
+            project.voltageV.toString()
+        )
     }
 
     var powerFactor by remember {
-        mutableStateOf(project.powerFactor.toString())
+        mutableStateOf(
+            project.powerFactor.toString()
+        )
     }
 
     var isThreePhase by remember {
-        mutableStateOf(project.isThreePhase)
+        mutableStateOf(
+            project.isThreePhase
+        )
     }
 
     var selectedCableSize by remember {
         mutableStateOf<Double?>(null)
     }
 
-    var isCableMenuExpanded by remember {
+    var showCableMenu by remember {
         mutableStateOf(false)
     }
 
@@ -81,15 +86,17 @@ fun VoltageDropScreen(
         mutableStateOf(false)
     }
 
-    /*
-     * Calculates the cable automatically or recalculates the
-     * user-selected cable.
-     */
-    fun calculateCable(requestedSize: Double? = null) {
+    fun calculateCable(
+        requestedSize: Double? = null
+    ) {
+        val i =
+            current.toDoubleOrNull() ?: 0.0
 
-        val i = current.toDoubleOrNull() ?: 0.0
-        val l = length.toDoubleOrNull() ?: 0.0
-        val v = voltage.toDoubleOrNull() ?: 0.0
+        val l =
+            length.toDoubleOrNull() ?: 0.0
+
+        val v =
+            voltage.toDoubleOrNull() ?: 0.0
 
         val pf =
             powerFactor
@@ -102,7 +109,9 @@ fun VoltageDropScreen(
             l <= 0.0 ||
             v <= 0.0
         ) {
-            result = "Please enter valid values."
+            result =
+                "Please enter valid values."
+
             hasCalculated = false
             return
         }
@@ -113,14 +122,6 @@ fun VoltageDropScreen(
             isThreePhase = isThreePhase
         )
 
-        /*
-         * If requestedSize is null:
-         * the calculator selects the smallest available cable
-         * according to ampacity.
-         *
-         * If requestedSize is supplied:
-         * that exact cable is checked.
-         */
         val calculation =
             ElectricalCalculator.selectCable(
                 currentA = i,
@@ -131,24 +132,24 @@ fun VoltageDropScreen(
                 requestedCableSizeMm2 = requestedSize
             )
 
-        if (!calculation.success &&
+        if (
             calculation.sizeMm2 <= 0.0
         ) {
-
             result = """
                 CABLE SELECTION
 
                 Status:
                 ${calculation.status}
 
-                No suitable cable was found.
+                No suitable cable found.
             """.trimIndent()
 
             hasCalculated = true
             return
         }
 
-        selectedCableSize = calculation.sizeMm2
+        selectedCableSize =
+            calculation.sizeMm2
 
         val ampacityPass =
             calculation.ampacityA >= i
@@ -156,7 +157,7 @@ fun VoltageDropScreen(
         val voltageDropPass =
             calculation.voltageDropPercent <= 3.0
 
-        val finalStatus =
+        val status =
             when {
                 !ampacityPass &&
                         !voltageDropPass ->
@@ -176,15 +177,19 @@ fun VoltageDropScreen(
             }
 
         ProjectManager.setCableResult(
-            cableSizeMm2 = calculation.sizeMm2,
-            cableAmpacityA = calculation.ampacityA,
+            cableSizeMm2 =
+                calculation.sizeMm2,
+            cableAmpacityA =
+                calculation.ampacityA,
             cableLengthM = l,
-            voltageDropV = calculation.voltageDropV,
-            voltageDropPercent = calculation.voltageDropPercent
+            voltageDropV =
+                calculation.voltageDropV,
+            voltageDropPercent =
+                calculation.voltageDropPercent
         )
 
         result = """
-            VOLTAGE DROP RESULT
+            VOLTAGE DROP & CABLE SIZING
 
             Recommended / Selected Cable:
             %.1f mm²
@@ -245,7 +250,7 @@ fun VoltageDropScreen(
             } else {
                 "CHECK"
             },
-            finalStatus
+            status
         )
 
         hasCalculated = true
@@ -264,7 +269,8 @@ fun VoltageDropScreen(
 
         Text(
             text = "Voltage Drop & Cable Sizing",
-            style = MaterialTheme.typography.headlineSmall
+            style =
+                MaterialTheme.typography.headlineSmall
         )
 
         Text(
@@ -273,14 +279,16 @@ fun VoltageDropScreen(
                     "Current Project"
                 }
             }",
-            style = MaterialTheme.typography.bodyMedium
+            style =
+                MaterialTheme.typography.bodyMedium
         )
 
         HorizontalDivider()
 
         Text(
             text = "Electrical Design Inputs",
-            style = MaterialTheme.typography.titleMedium
+            style =
+                MaterialTheme.typography.titleMedium
         )
 
         OutlinedTextField(
@@ -291,7 +299,8 @@ fun VoltageDropScreen(
             label = {
                 Text("Design Current (A)")
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
@@ -302,7 +311,8 @@ fun VoltageDropScreen(
             label = {
                 Text("Cable Length (m)")
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
@@ -313,7 +323,8 @@ fun VoltageDropScreen(
             label = {
                 Text("System Voltage (V)")
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
@@ -324,11 +335,13 @@ fun VoltageDropScreen(
             label = {
                 Text("Power Factor")
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         )
 
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier =
+                Modifier.fillMaxWidth(),
             horizontalArrangement =
                 Arrangement.spacedBy(8.dp)
         ) {
@@ -337,7 +350,8 @@ fun VoltageDropScreen(
                 onClick = {
                     isThreePhase = true
                 },
-                modifier = Modifier.weight(1f)
+                modifier =
+                    Modifier.weight(1f)
             ) {
                 Text("3 Phase")
             }
@@ -346,29 +360,29 @@ fun VoltageDropScreen(
                 onClick = {
                     isThreePhase = false
                 },
-                modifier = Modifier.weight(1f)
+                modifier =
+                    Modifier.weight(1f)
             ) {
                 Text("1 Phase")
             }
         }
 
         /*
-         * Main automatic cable sizing button.
+         * Automatic cable selection.
          */
         Button(
             onClick = {
                 selectedCableSize = null
                 calculateCable()
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         ) {
             Text("AUTO SELECT CABLE")
         }
 
-        /*
-         * Show the recommended cable after calculation.
-         */
-        if (hasCalculated &&
+        if (
+            hasCalculated &&
             selectedCableSize != null
         ) {
 
@@ -376,74 +390,75 @@ fun VoltageDropScreen(
 
             Text(
                 text = "Cable Selection",
-                style = MaterialTheme.typography.titleMedium
+                style =
+                    MaterialTheme.typography.titleMedium
             )
 
             Text(
-                text = "Recommended Cable: %.1f mm²"
-                    .format(selectedCableSize),
-                style = MaterialTheme.typography.bodyLarge
+                text =
+                    "Recommended Cable: %.1f mm²"
+                        .format(selectedCableSize),
+                style =
+                    MaterialTheme.typography.bodyLarge
             )
 
             /*
-             * User can change the automatically selected cable.
+             * Change cable button.
              */
-            ExposedDropdownMenuBox(
-                expanded = isCableMenuExpanded,
-                onExpandedChange = {
-                    isCableMenuExpanded =
-                        !isCableMenuExpanded
-                }
+            Column(
+                modifier =
+                    Modifier.fillMaxWidth()
             ) {
 
                 OutlinedButton(
                     onClick = {
-                        isCableMenuExpanded = true
+                        showCableMenu =
+                            !showCableMenu
                     },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier =
+                        Modifier.fillMaxWidth()
                 ) {
                     Text(
-                        text = selectedCableSize?.let {
-                            "Change Cable: %.1f mm²"
-                                .format(it)
-                        } ?: "Change Cable"
+                        text =
+                            "CHANGE CABLE"
                     )
                 }
 
-                ExposedDropdownMenu(
-                    expanded = isCableMenuExpanded,
+                DropdownMenu(
+                    expanded = showCableMenu,
                     onDismissRequest = {
-                        isCableMenuExpanded = false
+                        showCableMenu = false
                     }
                 ) {
 
-                    ElectricalCalculator.cables.forEach { cable ->
+                    ElectricalCalculator.cables
+                        .forEach { cable ->
 
-                        DropdownMenuItem(
-                            text = {
-                                Text(
-                                    "%.1f mm²  |  %.0f A"
-                                        .format(
-                                            cable.sizeMm2,
-                                            cable.ampacityA
-                                        )
-                                )
-                            },
-                            onClick = {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        "%.1f mm²  |  %.0f A"
+                                            .format(
+                                                cable.sizeMm2,
+                                                cable.ampacityA
+                                            )
+                                    )
+                                },
+                                onClick = {
 
-                                selectedCableSize =
-                                    cable.sizeMm2
-
-                                isCableMenuExpanded =
-                                    false
-
-                                calculateCable(
-                                    requestedSize =
+                                    selectedCableSize =
                                         cable.sizeMm2
-                                )
-                            }
-                        )
-                    }
+
+                                    showCableMenu =
+                                        false
+
+                                    calculateCable(
+                                        requestedSize =
+                                            cable.sizeMm2
+                                    )
+                                }
+                            )
+                        }
                 }
             }
         }
@@ -454,23 +469,25 @@ fun VoltageDropScreen(
 
             Text(
                 text = result,
-                style = MaterialTheme.typography.bodyLarge
+                style =
+                    MaterialTheme.typography.bodyLarge
             )
 
             Spacer(
-                modifier = Modifier.height(4.dp)
+                modifier =
+                    Modifier.height(4.dp)
             )
 
             Text(
                 text =
-                    "✓ Cable calculation saved to ProjectManager",
+                    "✓ Cable calculation saved",
                 style =
                     MaterialTheme.typography.labelLarge
             )
 
             Text(
                 text =
-                    "✓ Cable can be changed and recalculated",
+                    "✓ You can change the cable and recalculate",
                 style =
                     MaterialTheme.typography.labelLarge
             )
@@ -480,58 +497,75 @@ fun VoltageDropScreen(
 
         Text(
             text = "Current Project Result",
-            style = MaterialTheme.typography.titleMedium
+            style =
+                MaterialTheme.typography.titleMedium
         )
 
         Text(
-            text = "Design Current: %.2f A".format(
-                ProjectManager.calculation.designCurrentA
-            )
+            text =
+                "Design Current: %.2f A".format(
+                    ProjectManager.calculation
+                        .designCurrentA
+                )
         )
 
         Text(
-            text = "Selected Cable: %.1f mm²".format(
-                ProjectManager.calculation.cableSizeMm2
-            )
+            text =
+                "Selected Cable: %.1f mm²".format(
+                    ProjectManager.calculation
+                        .cableSizeMm2
+                )
         )
 
         Text(
-            text = "Cable Ampacity: %.2f A".format(
-                ProjectManager.calculation.cableAmpacityA
-            )
+            text =
+                "Cable Ampacity: %.2f A".format(
+                    ProjectManager.calculation
+                        .cableAmpacityA
+                )
         )
 
         Text(
-            text = "Cable Length: %.1f m".format(
-                ProjectManager.calculation.cableLengthM
-            )
+            text =
+                "Cable Length: %.1f m".format(
+                    ProjectManager.calculation
+                        .cableLengthM
+                )
         )
 
         Text(
-            text = "Voltage Drop: %.2f V".format(
-                ProjectManager.calculation.voltageDropV
-            )
+            text =
+                "Voltage Drop: %.2f V".format(
+                    ProjectManager.calculation
+                        .voltageDropV
+                )
         )
 
         Text(
-            text = "Voltage Drop: %.2f %%".format(
-                ProjectManager.calculation.voltageDropPercent
-            )
+            text =
+                "Voltage Drop: %.2f %%".format(
+                    ProjectManager.calculation
+                        .voltageDropPercent
+                )
         )
 
         Text(
-            text = "Design Status: ${
-                ProjectManager.calculation.designStatus
-            }"
+            text =
+                "Design Status: ${
+                    ProjectManager.calculation
+                        .designStatus
+                }"
         )
 
         Spacer(
-            modifier = Modifier.height(10.dp)
+            modifier =
+                Modifier.height(10.dp)
         )
 
         Button(
             onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         ) {
             Text("Back")
         }
