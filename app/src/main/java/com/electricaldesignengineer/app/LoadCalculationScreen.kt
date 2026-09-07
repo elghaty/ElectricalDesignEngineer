@@ -2,18 +2,17 @@ package com.electricaldesignengineer.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,14 +35,16 @@ fun LoadCalculationScreen(
 
     var voltage by remember {
         mutableStateOf(
-            ProjectManager.calculation.voltageV.toString()
+            if (ProjectManager.calculation.voltageV > 0.0) {
+                ProjectManager.calculation.voltageV.toString()
+            } else {
+                "400"
+            }
         )
     }
 
     var isThreePhase by remember {
-        mutableStateOf(
-            ProjectManager.calculation.isThreePhase
-        )
+        mutableStateOf(ProjectManager.calculation.isThreePhase)
     }
 
     var result by remember { mutableStateOf("") }
@@ -55,6 +56,7 @@ fun LoadCalculationScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+
         Text(
             text = "Load Calculation",
             style = MaterialTheme.typography.headlineSmall
@@ -71,10 +73,16 @@ fun LoadCalculationScreen(
 
         HorizontalDivider()
 
+        Text(
+            text = "Load Input",
+            style = MaterialTheme.typography.titleMedium
+        )
+
         OutlinedTextField(
             value = loadName,
             onValueChange = { loadName = it },
             label = { Text("Load Name") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -82,6 +90,7 @@ fun LoadCalculationScreen(
             value = quantity,
             onValueChange = { quantity = it },
             label = { Text("Quantity") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -89,6 +98,7 @@ fun LoadCalculationScreen(
             value = power,
             onValueChange = { power = it },
             label = { Text("Power per Load (kW)") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -96,6 +106,7 @@ fun LoadCalculationScreen(
             value = powerFactor,
             onValueChange = { powerFactor = it },
             label = { Text("Power Factor") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -103,6 +114,7 @@ fun LoadCalculationScreen(
             value = demandFactor,
             onValueChange = { demandFactor = it },
             label = { Text("Demand Factor") },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -118,34 +130,48 @@ fun LoadCalculationScreen(
                     }
                 )
             },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = {
-                    isThreePhase = true
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("3 Phase")
-            }
+        Text(
+            text = "Phase System",
+            style = MaterialTheme.typography.titleSmall
+        )
 
-            Button(
-                onClick = {
-                    isThreePhase = false
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("1 Phase")
-            }
+        Button(
+            onClick = {
+                isThreePhase = true
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (isThreePhase) {
+                    "✓ 3 Phase Selected"
+                } else {
+                    "3 Phase"
+                }
+            )
+        }
+
+        OutlinedButton(
+            onClick = {
+                isThreePhase = false
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (!isThreePhase) {
+                    "✓ 1 Phase Selected"
+                } else {
+                    "1 Phase"
+                }
+            )
         }
 
         Button(
             onClick = {
+
                 val q = quantity.toDoubleOrNull() ?: 0.0
                 val p = power.toDoubleOrNull() ?: 0.0
 
@@ -163,63 +189,79 @@ fun LoadCalculationScreen(
                     voltage.toDoubleOrNull()
                         ?: ProjectManager.calculation.voltageV
 
-                ProjectManager.updateSystem(
-                    voltageV = v,
-                    powerFactor = pf,
-                    isThreePhase = isThreePhase
-                )
+                if (q <= 0.0 || p <= 0.0 || v <= 0.0) {
 
-                ProjectManager.addLoad(
-                    LoadItem(
-                        name = loadName.ifBlank {
-                            "Unnamed Load"
-                        },
-                        quantity = q,
-                        powerKW = p,
-                        demandFactor = df,
-                        powerFactor = pf
+                    result =
+                        "ERROR\n\nPlease enter valid quantity, power and voltage values."
+
+                } else {
+
+                    ProjectManager.updateSystem(
+                        voltageV = v,
+                        powerFactor = pf,
+                        isThreePhase = isThreePhase
                     )
-                )
 
-                val calculation =
-                    ProjectManager.calculateFromLoads()
+                    ProjectManager.addLoad(
+                        LoadItem(
+                            name = loadName.ifBlank {
+                                "Unnamed Load"
+                            },
+                            quantity = q,
+                            powerKW = p,
+                            demandFactor = df,
+                            powerFactor = pf
+                        )
+                    )
 
-                result = """
-                    PROJECT LOAD SUMMARY
-                    
-                    Connected Load:
-                    %.2f kW
-                    
-                    Demand Load:
-                    %.2f kW
-                    
-                    Total Apparent Power:
-                    %.2f kVA
-                    
-                    Design Current:
-                    %.2f A
-                    
-                    Effective Power Factor:
-                    %.3f
-                    
-                    System Voltage:
-                    %.0f V
-                    
-                    Loads in Project:
-                    %d
-                """.trimIndent().format(
-                    calculation.connectedKW,
-                    calculation.demandKW,
-                    calculation.totalKVA,
-                    calculation.designCurrentA,
-                    calculation.powerFactor,
-                    calculation.voltageV,
-                    ProjectManager.loads.size
-                )
+                    val calculation =
+                        ProjectManager.calculateFromLoads()
 
-                loadName = ""
-                quantity = "1"
-                power = ""
+                    result = """
+                        PROJECT LOAD SUMMARY
+                        
+                        Connected Load:
+                        %.2f kW
+                        
+                        Demand Load:
+                        %.2f kW
+                        
+                        Total Apparent Power:
+                        %.2f kVA
+                        
+                        Design Current:
+                        %.2f A
+                        
+                        Effective Power Factor:
+                        %.3f
+                        
+                        System Voltage:
+                        %.0f V
+                        
+                        Phase System:
+                        %s
+                        
+                        Loads in Project:
+                        %d
+                    """.trimIndent().format(
+                        calculation.connectedKW,
+                        calculation.demandKW,
+                        calculation.totalKVA,
+                        calculation.designCurrentA,
+                        calculation.powerFactor,
+                        calculation.voltageV,
+                        if (isThreePhase) {
+                            "3 Phase"
+                        } else {
+                            "1 Phase"
+                        },
+                        ProjectManager.loads.size
+                    )
+
+                    loadName = ""
+                    quantity = "1"
+                    power = ""
+                }
             },
             modifier = Modifier.fillMaxWidth()
         ) {
@@ -227,6 +269,7 @@ fun LoadCalculationScreen(
         }
 
         if (result.isNotEmpty()) {
+
             HorizontalDivider()
 
             Text(
