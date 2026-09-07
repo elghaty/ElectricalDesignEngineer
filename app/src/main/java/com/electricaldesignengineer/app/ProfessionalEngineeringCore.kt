@@ -46,14 +46,11 @@ object ProfessionalEngineeringCore {
         val powerFactor: Double,
         val phaseSystem: PhaseSystem,
 
-        val conductorMaterial:
-            EngineeringDesignEngine.CableMaterial,
+        val conductorMaterial: CableMaterial,
 
-        val insulation:
-            EngineeringDesignEngine.InsulationType,
+        val insulation: InsulationType,
 
-        val installationMethod:
-            EngineeringDesignEngine.InstallationMethod,
+        val installationMethod: InstallationMethod,
 
         val numberOfLoadedConductors: Int,
 
@@ -93,14 +90,9 @@ object ProfessionalEngineeringCore {
     interface CableDataProvider {
 
         fun availableCables(
-            material:
-                EngineeringDesignEngine.CableMaterial,
-
-            insulation:
-                EngineeringDesignEngine.InsulationType,
-
-            installationMethod:
-                EngineeringDesignEngine.InstallationMethod
+            material: CableMaterial,
+            insulation: InsulationType,
+            installationMethod: InstallationMethod
         ): List<CableData>
     }
 
