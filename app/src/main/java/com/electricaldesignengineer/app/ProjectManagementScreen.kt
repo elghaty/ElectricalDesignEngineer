@@ -1,168 +1,60 @@
 package com.electricaldesignengineer.app
 
-import android.app.Application
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.viewModelScope
-import androidx.lifecycle.viewmodel.compose.viewModel
-import com.electricaldesignengineer.app.data.AppDatabase
-import com.electricaldesignengineer.app.data.ProjectDao
-import com.electricaldesignengineer.app.data.ProjectEntity
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-
-class ProjectManagementViewModel(
-    application: Application
-) : AndroidViewModel(application) {
-
-    private val dao: ProjectDao =
-        AppDatabase.getDatabase(application).projectDao()
-
-    val projects = dao.getAllProjects()
-        .stateIn(
-            scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
-
-    fun addProject(
-        name: String,
-        client: String,
-        location: String,
-        engineer: String
-    ) {
-
-        if (name.isBlank()) return
-
-        viewModelScope.launch {
-
-            val project = ProjectEntity(
-
-                name = name,
-
-                clientName = client,
-
-                projectLocation = location,
-
-                engineerName = engineer,
-
-                createdDate = SimpleDateFormat(
-                    "yyyy-MM-dd HH:mm",
-                    Locale.getDefault()
-                ).format(Date()),
-
-                connectedKW =
-                    ElectricalCalculator.connectedKW,
-
-                demandKW =
-                    ElectricalCalculator.demandKW,
-
-                totalKVA =
-                    ElectricalCalculator.totalKVA,
-
-                designCurrentA =
-                    ElectricalCalculator.designCurrentA,
-
-                voltageV =
-                    ElectricalCalculator.voltageV,
-
-                powerFactor =
-                    ElectricalCalculator.powerFactor,
-
-                cableSizeMm2 =
-                    ElectricalCalculator.cableSizeMm2,
-
-                voltageDropPercent =
-                    ElectricalCalculator.voltageDropPercent,
-
-                shortCircuitKA =
-                    ElectricalCalculator.shortCircuitKA,
-
-                breakerRatingA =
-                    ElectricalCalculator.breakerRatingA,
-
-                breakerIcuKA =
-                    ElectricalCalculator.breakerIcuKA,
-
-                transformerKVA =
-                    ElectricalCalculator.transformerKVA,
-
-                generatorKVA =
-                    ElectricalCalculator.generatorKVA,
-
-                capacitorKVAR =
-                    ElectricalCalculator.capacitorKVAR
-            )
-
-            dao.insertProject(project)
-        }
-    }
-
-    fun deleteProject(project: ProjectEntity) {
-
-        viewModelScope.launch {
-
-            dao.deleteProject(project)
-        }
-    }
-}
 
 @Composable
 fun ProjectManagementScreen(
-    onBack: () -> Unit,
-    viewModel: ProjectManagementViewModel = viewModel()
+    onBack: () -> Unit = {}
 ) {
 
-    val projects by viewModel.projects.collectAsState()
-
-    var name by remember {
-        mutableStateOf("")
+    var projectName by remember {
+        mutableStateOf(ProjectManager.calculation.projectName)
     }
 
-    var client by remember {
-        mutableStateOf("")
+    var clientName by remember {
+        mutableStateOf(ProjectManager.calculation.clientName)
     }
 
-    var location by remember {
-        mutableStateOf("")
+    var projectLocation by remember {
+        mutableStateOf(ProjectManager.calculation.projectLocation)
     }
 
-    var engineer by remember {
+    var engineerName by remember {
+        mutableStateOf(ProjectManager.calculation.engineerName)
+    }
+
+    var message by remember {
         mutableStateOf("")
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
 
         Text(
@@ -170,279 +62,351 @@ fun ProjectManagementScreen(
             style = MaterialTheme.typography.headlineSmall
         )
 
-        Spacer(
-            modifier = Modifier.height(16.dp)
+        Text(
+            text = "Create and manage the active electrical design project.",
+            style = MaterialTheme.typography.bodyMedium
+        )
+
+        HorizontalDivider()
+
+        Text(
+            text = "Project Information",
+            style = MaterialTheme.typography.titleMedium
         )
 
         OutlinedTextField(
-            value = name,
+            value = projectName,
             onValueChange = {
-                name = it
+                projectName = it
             },
             label = {
                 Text("Project Name")
             },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
-
         OutlinedTextField(
-            value = client,
+            value = clientName,
             onValueChange = {
-                client = it
+                clientName = it
             },
             label = {
                 Text("Client Name")
             },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
-
         OutlinedTextField(
-            value = location,
+            value = projectLocation,
             onValueChange = {
-                location = it
+                projectLocation = it
             },
             label = {
                 Text("Project Location")
             },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
-        Spacer(
-            modifier = Modifier.height(8.dp)
-        )
-
         OutlinedTextField(
-            value = engineer,
+            value = engineerName,
             onValueChange = {
-                engineer = it
+                engineerName = it
             },
             label = {
                 Text("Engineer Name")
             },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
         Spacer(
-            modifier = Modifier.height(12.dp)
+            modifier = Modifier.height(4.dp)
         )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        Button(
+            onClick = {
 
-            Button(
-                onClick = {
+                if (projectName.isBlank()) {
 
-                    viewModel.addProject(
-                        name = name,
-                        client = client,
-                        location = location,
-                        engineer = engineer
+                    message = "ERROR: Project Name is required."
+
+                } else {
+
+                    ProjectManager.updateProjectInfo(
+                        projectName = projectName.trim(),
+                        clientName = clientName.trim(),
+                        projectLocation = projectLocation.trim(),
+                        engineerName = engineerName.trim()
                     )
 
-                    name = ""
-                    client = ""
-                    location = ""
-                    engineer = ""
-                },
-                modifier = Modifier.weight(1f)
+                    message = "Project information saved successfully."
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Save Project Information")
+        }
+
+        OutlinedButton(
+            onClick = {
+
+                ProjectManager.startNewProject(
+                    projectName = projectName.trim(),
+                    clientName = clientName.trim(),
+                    projectLocation = projectLocation.trim(),
+                    engineerName = engineerName.trim()
+                )
+
+                message = "New project created successfully."
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Start New Project")
+        }
+
+        OutlinedButton(
+            onClick = {
+
+                ProjectManager.clearLoads()
+
+                message = "All project loads have been cleared."
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Clear All Loads")
+        }
+
+        if (message.isNotBlank()) {
+
+            HorizontalDivider()
+
+            Text(
+                text = message,
+                style = MaterialTheme.typography.bodyLarge
+            )
+        }
+
+        HorizontalDivider()
+
+        Text(
+            text = "Active Project",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth()
+        ) {
+
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
 
-                Text("Save Project")
-            }
+                Text(
+                    text = ProjectManager.calculation.projectName.ifBlank {
+                        "Unnamed Project"
+                    },
+                    style = MaterialTheme.typography.titleLarge
+                )
 
-            Button(
-                onClick = onBack,
-                modifier = Modifier.weight(1f)
-            ) {
+                Text(
+                    text = "Client: ${
+                        ProjectManager.calculation.clientName.ifBlank {
+                            "-"
+                        }
+                    }"
+                )
 
-                Text("Back")
+                Text(
+                    text = "Location: ${
+                        ProjectManager.calculation.projectLocation.ifBlank {
+                            "-"
+                        }
+                    }"
+                )
+
+                Text(
+                    text = "Engineer: ${
+                        ProjectManager.calculation.engineerName.ifBlank {
+                            "-"
+                        }
+                    }"
+                )
+
+                HorizontalDivider()
+
+                Text(
+                    text = "Connected Load: %.2f kW".format(
+                        ProjectManager.calculation.connectedKW
+                    )
+                )
+
+                Text(
+                    text = "Demand Load: %.2f kW".format(
+                        ProjectManager.calculation.demandKW
+                    )
+                )
+
+                Text(
+                    text = "Total Load: %.2f kVA".format(
+                        ProjectManager.calculation.totalKVA
+                    )
+                )
+
+                Text(
+                    text = "Design Current: %.2f A".format(
+                        ProjectManager.calculation.designCurrentA
+                    )
+                )
+
+                Text(
+                    text = "Voltage: %.0f V".format(
+                        ProjectManager.calculation.voltageV
+                    )
+                )
+
+                Text(
+                    text = "Power Factor: %.3f".format(
+                        ProjectManager.calculation.powerFactor
+                    )
+                )
+
+                Text(
+                    text = "Phase System: ${
+                        if (ProjectManager.calculation.isThreePhase) {
+                            "3 Phase"
+                        } else {
+                            "1 Phase"
+                        }
+                    }"
+                )
+
+                Text(
+                    text = "Number of Loads: ${
+                        ProjectManager.loads.size
+                    }"
+                )
+
+                Text(
+                    text = "Status: ${
+                        ProjectManager.calculation.designStatus
+                    }"
+                )
             }
         }
 
-        Spacer(
-            modifier = Modifier.height(20.dp)
-        )
-
-        Divider()
-
-        Spacer(
-            modifier = Modifier.height(12.dp)
-        )
+        HorizontalDivider()
 
         Text(
-            text = "Saved Projects",
-            style = MaterialTheme.typography.titleLarge
+            text = "Project Loads",
+            style = MaterialTheme.typography.titleMedium
         )
+
+        if (ProjectManager.loads.isEmpty()) {
+
+            Text(
+                text = "No loads have been added to this project yet.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+
+        } else {
+
+            ProjectManager.loads.forEachIndexed { index, load ->
+
+                Card(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+
+                        Text(
+                            text = "${index + 1}. ${load.name}",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+
+                        Text(
+                            text = "Quantity: ${load.quantity}"
+                        )
+
+                        Text(
+                            text = "Power / Load: %.2f kW".format(
+                                load.powerKW
+                            )
+                        )
+
+                        Text(
+                            text = "Demand Factor: %.2f".format(
+                                load.demandFactor
+                            )
+                        )
+
+                        Text(
+                            text = "Power Factor: %.2f".format(
+                                load.powerFactor
+                            )
+                        )
+
+                        Text(
+                            text = "Connected: %.2f kW".format(
+                                load.quantity * load.powerKW
+                            )
+                        )
+
+                        Text(
+                            text = "Demand: %.2f kW".format(
+                                load.quantity *
+                                        load.powerKW *
+                                        load.demandFactor
+                            )
+                        )
+
+                        OutlinedButton(
+                            onClick = {
+
+                                ProjectManager.removeLoad(load)
+
+                                ProjectManager.calculateFromLoads()
+
+                                message =
+                                    "Load removed and project recalculated."
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text("Remove Load")
+                        }
+                    }
+                }
+            }
+        }
 
         Spacer(
             modifier = Modifier.height(8.dp)
         )
 
-        LazyColumn(
-            modifier = Modifier.fillMaxSize()
+        Button(
+            onClick = {
+
+                ProjectManager.calculateFromLoads()
+
+                message =
+                    "Project loads recalculated successfully."
+            },
+            modifier = Modifier.fillMaxWidth()
         ) {
-
-            items(
-                items = projects,
-                key = {
-                    it.id
-                }
-            ) { project ->
-
-                ProjectCard(
-                    project = project,
-                    onDelete = {
-                        viewModel.deleteProject(project)
-                    }
-                )
-            }
+            Text("Recalculate Project")
         }
-    }
-}
 
-@Composable
-fun ProjectCard(
-    project: ProjectEntity,
-    onDelete: () -> Unit
-) {
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp)
-    ) {
-
-        Column(
-            modifier = Modifier.padding(12.dp)
+        Button(
+            onClick = onBack,
+            modifier = Modifier.fillMaxWidth()
         ) {
-
-            Text(
-                text = project.name,
-                style = MaterialTheme.typography.titleMedium
-            )
-
-            Spacer(
-                modifier = Modifier.height(4.dp)
-            )
-
-            Text(
-                text = "Client: ${project.clientName}"
-            )
-
-            Text(
-                text = "Location: ${project.projectLocation}"
-            )
-
-            Text(
-                text = "Engineer: ${project.engineerName}"
-            )
-
-            Text(
-                text = "Created: ${project.createdDate}"
-            )
-
-            Spacer(
-                modifier = Modifier.height(10.dp)
-            )
-
-            Text(
-                text = "Design Results",
-                style = MaterialTheme.typography.titleSmall
-            )
-
-            Spacer(
-                modifier = Modifier.height(4.dp)
-            )
-
-            Text(
-                text = "Connected Load: %.2f kW"
-                    .format(project.connectedKW)
-            )
-
-            Text(
-                text = "Demand Load: %.2f kW"
-                    .format(project.demandKW)
-            )
-
-            Text(
-                text = "Total: %.2f kVA"
-                    .format(project.totalKVA)
-            )
-
-            Text(
-                text = "Design Current: %.2f A"
-                    .format(project.designCurrentA)
-            )
-
-            Text(
-                text = "Voltage: %.0f V"
-                    .format(project.voltageV)
-            )
-
-            Text(
-                text = "Power Factor: %.2f"
-                    .format(project.powerFactor)
-            )
-
-            Text(
-                text = "Cable: %.1f mm²"
-                    .format(project.cableSizeMm2)
-            )
-
-            Text(
-                text = "Voltage Drop: %.2f %%"
-                    .format(project.voltageDropPercent)
-            )
-
-            Text(
-                text = "Short Circuit: %.2f kA"
-                    .format(project.shortCircuitKA)
-            )
-
-            Text(
-                text = "Breaker: ${project.breakerRatingA} A"
-            )
-
-            Text(
-                text = "Breaker Icu: %.1f kA"
-                    .format(project.breakerIcuKA)
-            )
-
-            Text(
-                text = "Transformer: %.0f kVA"
-                    .format(project.transformerKVA)
-            )
-
-            Text(
-                text = "Generator: %.0f kVA"
-                    .format(project.generatorKVA)
-            )
-
-            Text(
-                text = "Capacitor Bank: %.1f kVAR"
-                    .format(project.capacitorKVAR)
-            )
-
-            Spacer(
-                modifier = Modifier.height(10.dp)
-            )
-
-            Button(
-                onClick = onDelete
-            ) {
-
-                Text("Delete")
-            }
+            Text("Back")
         }
     }
 }
