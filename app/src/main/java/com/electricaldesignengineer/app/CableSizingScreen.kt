@@ -2,18 +2,17 @@ package com.electricaldesignengineer.app
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,7 +27,6 @@ import androidx.compose.ui.unit.dp
 fun CableSizingScreen(
     onBack: () -> Unit = {}
 ) {
-
     val project = ProjectManager.calculation
 
     var designCurrent by remember {
@@ -53,13 +51,21 @@ fun CableSizingScreen(
 
     var voltage by remember {
         mutableStateOf(
-            project.voltageV.toString()
+            if (project.voltageV > 0.0) {
+                project.voltageV.toString()
+            } else {
+                "400"
+            }
         )
     }
 
     var powerFactor by remember {
         mutableStateOf(
-            project.powerFactor.toString()
+            if (project.powerFactor > 0.0) {
+                project.powerFactor.toString()
+            } else {
+                "0.90"
+            }
         )
     }
 
@@ -96,7 +102,7 @@ fun CableSizingScreen(
         HorizontalDivider()
 
         Text(
-            text = "Load Calculation Input",
+            text = "Cable Design Inputs",
             style = MaterialTheme.typography.titleMedium
         )
 
@@ -108,6 +114,7 @@ fun CableSizingScreen(
             label = {
                 Text("Design Current (A)")
             },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -119,6 +126,7 @@ fun CableSizingScreen(
             label = {
                 Text("Cable Length (m)")
             },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -130,6 +138,7 @@ fun CableSizingScreen(
             label = {
                 Text("Voltage (V)")
             },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
@@ -141,31 +150,43 @@ fun CableSizingScreen(
             label = {
                 Text("Power Factor")
             },
+            singleLine = true,
             modifier = Modifier.fillMaxWidth()
         )
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        Text(
+            text = "Phase System",
+            style = MaterialTheme.typography.titleSmall
+        )
+
+        Button(
+            onClick = {
+                isThreePhase = true
+            },
+            modifier = Modifier.fillMaxWidth()
         ) {
+            Text(
+                if (isThreePhase) {
+                    "✓ 3 Phase Selected"
+                } else {
+                    "3 Phase"
+                }
+            )
+        }
 
-            Button(
-                onClick = {
-                    isThreePhase = true
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("3 Phase")
-            }
-
-            Button(
-                onClick = {
-                    isThreePhase = false
-                },
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("1 Phase")
-            }
+        OutlinedButton(
+            onClick = {
+                isThreePhase = false
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text(
+                if (!isThreePhase) {
+                    "✓ 1 Phase Selected"
+                } else {
+                    "1 Phase"
+                }
+            )
         }
 
         Button(
@@ -184,7 +205,7 @@ fun CableSizingScreen(
                     powerFactor
                         .toDoubleOrNull()
                         ?.coerceIn(0.01, 1.0)
-                        ?: ProjectManager.calculation.powerFactor
+                        ?: 0.90
 
                 if (
                     current <= 0.0 ||
@@ -193,7 +214,7 @@ fun CableSizingScreen(
                 ) {
 
                     result =
-                        "Please enter valid values."
+                        "ERROR\n\nPlease enter valid values for current, cable length and voltage."
 
                 } else {
 
@@ -247,6 +268,9 @@ fun CableSizingScreen(
                         Design Current:
                         %.2f A
                         
+                        Phase System:
+                        %s
+                        
                         Status:
                         %s
                     """.trimIndent().format(
@@ -255,6 +279,11 @@ fun CableSizingScreen(
                         cableCalculation.voltageDropV,
                         cableCalculation.voltageDropPercent,
                         current,
+                        if (isThreePhase) {
+                            "3 Phase"
+                        } else {
+                            "1 Phase"
+                        },
                         cableCalculation.status
                     )
                 }
