@@ -10,8 +10,11 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,7 +35,9 @@ fun BreakerSelectionScreen(
     var current by remember {
         mutableStateOf(
             if (project.designCurrentA > 0.0) {
-                "%.2f".format(project.designCurrentA)
+                "%.2f".format(
+                    project.designCurrentA
+                )
             } else {
                 ""
             }
@@ -42,11 +47,29 @@ fun BreakerSelectionScreen(
     var faultCurrent by remember {
         mutableStateOf(
             if (project.shortCircuitKA > 0.0) {
-                "%.2f".format(project.shortCircuitKA)
+                "%.2f".format(
+                    project.shortCircuitKA
+                )
             } else {
                 ""
             }
         )
+    }
+
+    var selectedBreaker by remember {
+        mutableStateOf<Int?>(null)
+    }
+
+    var selectedIcu by remember {
+        mutableStateOf<Double?>(null)
+    }
+
+    var showBreakerMenu by remember {
+        mutableStateOf(false)
+    }
+
+    var showIcuMenu by remember {
+        mutableStateOf(false)
     }
 
     var result by remember {
@@ -56,30 +79,37 @@ fun BreakerSelectionScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
+            .verticalScroll(
+                rememberScrollState()
+            )
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        verticalArrangement =
+            Arrangement.spacedBy(10.dp)
     ) {
 
         Text(
             text = "Breaker Selection",
-            style = MaterialTheme.typography.headlineSmall
+            style =
+                MaterialTheme.typography.headlineSmall
         )
 
         Text(
-            text = "Project: ${
-                project.projectName.ifBlank {
-                    "Current Project"
-                }
-            }",
-            style = MaterialTheme.typography.bodyMedium
+            text =
+                "Project: ${
+                    project.projectName.ifBlank {
+                        "Current Project"
+                    }
+                }",
+            style =
+                MaterialTheme.typography.bodyMedium
         )
 
         HorizontalDivider()
 
         Text(
             text = "Protection Inputs",
-            style = MaterialTheme.typography.titleMedium
+            style =
+                MaterialTheme.typography.titleMedium
         )
 
         OutlinedTextField(
@@ -88,9 +118,12 @@ fun BreakerSelectionScreen(
                 current = it
             },
             label = {
-                Text("Design Current (A)")
+                Text(
+                    "Design Current (A)"
+                )
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
@@ -99,19 +132,28 @@ fun BreakerSelectionScreen(
                 faultCurrent = it
             },
             label = {
-                Text("Short Circuit Current (kA)")
+                Text(
+                    "Short Circuit Current (kA)"
+                )
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         )
+
+        // =========================
+        // AUTO SELECTION
+        // =========================
 
         Button(
             onClick = {
 
                 val i =
-                    current.toDoubleOrNull() ?: 0.0
+                    current.toDoubleOrNull()
+                        ?: 0.0
 
                 val isc =
-                    faultCurrent.toDoubleOrNull() ?: 0.0
+                    faultCurrent.toDoubleOrNull()
+                        ?: 0.0
 
                 if (
                     i <= 0.0 ||
@@ -124,10 +166,31 @@ fun BreakerSelectionScreen(
                 } else {
 
                     val breaker =
-                        ElectricalCalculator.selectBreaker(
-                            currentA = i,
-                            faultCurrentKA = isc
-                        )
+                        ElectricalCalculator
+                            .selectBreaker(
+                                currentA = i,
+                                faultCurrentKA = isc
+                            )
+
+                    if (breaker.success) {
+
+                        selectedBreaker =
+                            breaker.ratingA
+
+                        selectedIcu =
+                            breaker.icuKA
+
+                    } else {
+
+                        selectedBreaker =
+                            if (breaker.ratingA > 0) {
+                                breaker.ratingA
+                            } else {
+                                null
+                            }
+
+                        selectedIcu = null
+                    }
 
                     ProjectManager.setBreaker(
                         breakerRatingA =
@@ -136,8 +199,9 @@ fun BreakerSelectionScreen(
                             breaker.icuKA
                     )
 
-                    result = """
-                        BREAKER SELECTION
+                    result =
+                        """
+                        AUTOMATIC BREAKER SELECTION
                         
                         Design Current:
                         %.2f A
@@ -151,24 +215,281 @@ fun BreakerSelectionScreen(
                         Required Icu:
                         %.1f kA
                         
-                        Design Status:
+                        Status:
                         %s
-                        
-                        ✓ Breaker saved to ProjectManager
-                        ✓ Protection result available to project
-                    """.trimIndent().format(
-                        i,
-                        breaker.ratingA,
-                        isc,
-                        breaker.icuKA,
-                        ProjectManager.calculation.designStatus
-                    )
+                        """.trimIndent()
+                            .format(
+                                i,
+                                breaker.ratingA,
+                                isc,
+                                breaker.icuKA,
+                                breaker.status
+                            )
                 }
             },
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         ) {
-            Text("Select & Save Breaker")
+            Text(
+                "AUTO SELECT BREAKER"
+            )
         }
+
+        // =========================
+        // MANUAL BREAKER
+        // =========================
+
+        HorizontalDivider()
+
+        Text(
+            text = "Manual Breaker Selection",
+            style =
+                MaterialTheme.typography.titleMedium
+        )
+
+        OutlinedButton(
+            onClick = {
+                showBreakerMenu =
+                    !showBreakerMenu
+            },
+            modifier =
+                Modifier.fillMaxWidth()
+        ) {
+
+            Text(
+                text =
+                    if (
+                        selectedBreaker != null
+                    ) {
+                        "Breaker: ${selectedBreaker} A"
+                    } else {
+                        "CHANGE BREAKER"
+                    }
+            )
+        }
+
+        DropdownMenu(
+            expanded =
+                showBreakerMenu,
+            onDismissRequest = {
+                showBreakerMenu = false
+            }
+        ) {
+
+            ElectricalCalculator
+                .breakerRatings
+                .forEach { rating ->
+
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "$rating A"
+                            )
+                        },
+                        onClick = {
+
+                            selectedBreaker =
+                                rating
+
+                            showBreakerMenu =
+                                false
+
+                            result =
+                                "Breaker selected: $rating A\nPress CHECK SELECTED BREAKER."
+                        }
+                    )
+                }
+        }
+
+        OutlinedButton(
+            onClick = {
+                showIcuMenu =
+                    !showIcuMenu
+            },
+            modifier =
+                Modifier.fillMaxWidth()
+        ) {
+
+            Text(
+                text =
+                    if (
+                        selectedIcu != null
+                    ) {
+                        "Icu: ${
+                            "%.1f".format(
+                                selectedIcu
+                            )
+                        } kA"
+                    } else {
+                        "CHANGE Icu"
+                    }
+            )
+        }
+
+        DropdownMenu(
+            expanded =
+                showIcuMenu,
+            onDismissRequest = {
+                showIcuMenu = false
+            }
+        ) {
+
+            ElectricalCalculator
+                .breakerIcuRatings
+                .forEach { icu ->
+
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                "%.1f kA".format(
+                                    icu
+                                )
+                            )
+                        },
+                        onClick = {
+
+                            selectedIcu =
+                                icu
+
+                            showIcuMenu =
+                                false
+
+                            result =
+                                "Icu selected: ${
+                                    "%.1f".format(
+                                        icu
+                                    )
+                                } kA\nPress CHECK SELECTED BREAKER."
+                        }
+                    )
+                }
+        }
+
+        // =========================
+        // CHECK MANUAL SELECTION
+        // =========================
+
+        Button(
+            onClick = {
+
+                val i =
+                    current.toDoubleOrNull()
+                        ?: 0.0
+
+                val isc =
+                    faultCurrent.toDoubleOrNull()
+                        ?: 0.0
+
+                val breaker =
+                    selectedBreaker
+
+                val icu =
+                    selectedIcu
+
+                if (
+                    i <= 0.0 ||
+                    isc <= 0.0
+                ) {
+
+                    result =
+                        "Please enter Design Current and Short Circuit Current."
+
+                } else if (
+                    breaker == null
+                ) {
+
+                    result =
+                        "Please select a breaker."
+
+                } else if (
+                    icu == null
+                ) {
+
+                    result =
+                        "Please select breaker Icu."
+
+                } else {
+
+                    val check =
+                        ElectricalCalculator
+                            .validateBreaker(
+                                currentA = i,
+                                faultCurrentKA = isc,
+                                breakerRatingA =
+                                    breaker,
+                                breakerIcuKA =
+                                    icu
+                            )
+
+                    if (check.success) {
+
+                        ProjectManager.setBreaker(
+                            breakerRatingA =
+                                check.ratingA,
+                            breakerIcuKA =
+                                check.icuKA
+                        )
+                    }
+
+                    result =
+                        """
+                        MANUAL BREAKER CHECK
+                        
+                        Design Current:
+                        %.2f A
+                        
+                        Selected Breaker:
+                        %d A
+                        
+                        Short Circuit:
+                        %.2f kA
+                        
+                        Selected Icu:
+                        %.1f kA
+                        
+                        Rating Check:
+                        %s
+                        
+                        Icu Check:
+                        %s
+                        
+                        FINAL STATUS:
+                        %s
+                        """.trimIndent()
+                            .format(
+                                i,
+                                check.ratingA,
+                                isc,
+                                check.icuKA,
+                                if (
+                                    check.ratingA >= i
+                                ) {
+                                    "PASS"
+                                } else {
+                                    "FAIL"
+                                },
+                                if (
+                                    check.icuKA >= isc
+                                ) {
+                                    "PASS"
+                                } else {
+                                    "FAIL"
+                                },
+                                check.status
+                            )
+                }
+            },
+            modifier =
+                Modifier.fillMaxWidth()
+        ) {
+            Text(
+                "CHECK SELECTED BREAKER"
+            )
+        }
+
+        // =========================
+        // RESULT
+        // =========================
 
         if (result.isNotEmpty()) {
 
@@ -176,63 +497,77 @@ fun BreakerSelectionScreen(
 
             Text(
                 text = result,
-                style = MaterialTheme.typography.bodyLarge
-            )
-
-            Spacer(
-                modifier = Modifier.height(4.dp)
-            )
-
-            Text(
-                text = "✓ Breaker result saved to ProjectManager",
-                style = MaterialTheme.typography.labelLarge
+                style =
+                    MaterialTheme.typography.bodyLarge
             )
         }
+
+        // =========================
+        // CURRENT PROJECT
+        // =========================
 
         HorizontalDivider()
 
         Text(
             text = "Current Project Protection",
-            style = MaterialTheme.typography.titleMedium
+            style =
+                MaterialTheme.typography.titleMedium
         )
 
         Text(
-            text = "Design Current: %.2f A".format(
-                ProjectManager.calculation.designCurrentA
-            )
+            text =
+                "Design Current: %.2f A".format(
+                    ProjectManager
+                        .calculation
+                        .designCurrentA
+                )
         )
 
         Text(
-            text = "Short Circuit: %.2f kA".format(
-                ProjectManager.calculation.shortCircuitKA
-            )
+            text =
+                "Short Circuit: %.2f kA".format(
+                    ProjectManager
+                        .calculation
+                        .shortCircuitKA
+                )
         )
 
         Text(
-            text = "Breaker Rating: %d A".format(
-                ProjectManager.calculation.breakerRatingA
-            )
+            text =
+                "Breaker Rating: %d A".format(
+                    ProjectManager
+                        .calculation
+                        .breakerRatingA
+                )
         )
 
         Text(
-            text = "Breaker Icu: %.1f kA".format(
-                ProjectManager.calculation.breakerIcuKA
-            )
+            text =
+                "Breaker Icu: %.1f kA".format(
+                    ProjectManager
+                        .calculation
+                        .breakerIcuKA
+                )
         )
 
         Text(
-            text = "Design Status: ${
-                ProjectManager.calculation.designStatus
-            }"
+            text =
+                "Design Status: ${
+                    ProjectManager
+                        .calculation
+                        .designStatus
+                }"
         )
 
         Spacer(
-            modifier = Modifier.height(10.dp)
+            modifier =
+                Modifier.height(10.dp)
         )
 
         Button(
             onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
+            modifier =
+                Modifier.fillMaxWidth()
         ) {
             Text("Back")
         }
