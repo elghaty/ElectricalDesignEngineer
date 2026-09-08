@@ -1,187 +1,122 @@
 package com.electricaldesignengineer.app
 
-import kotlin.math.sqrt
-
 /**
  * DistributionCalculator
  *
- * Calculates accumulated loads through:
+ * Orchestrator only.
  *
- * LOAD
- *  ↓
- * FINAL CIRCUIT
- *  ↓
- * SUB-DB
- *  ↓
- * DB
- *  ↓
- * SMDB
- *  ↓
- * MDB
- *  ↓
- * TRANSFORMER
+ * IMPORTANT:
+ * All electrical load and current calculations are delegated
+ * to ProfessionalEngineeringCore.
+ *
+ * This class must NOT contain duplicated electrical formulas
+ * or hardcoded engineering tables.
  */
 object DistributionCalculator {
 
     data class NodeCalculation(
-
         val nodeId: String,
-
         val nodeName: String,
-
         val nodeType: DistributionNodeType,
-
         val connectedKW: Double,
-
         val demandKW: Double,
-
         val demandKVA: Double,
-
         val currentA: Double,
-
         val loadingPercent: Double,
-
         val status: NodeStatus
     )
 
-
-    /**
-     * Calculate complete distribution system.
-     */
     fun calculate(
         system: DistributionSystem
     ): List<NodeCalculation> {
 
-        val results = mutableListOf<NodeCalculation>()
+        val results = mutableMapOf<String, NodeCalculation>()
 
-        /*
-         * Calculate from bottom to top.
-         */
         system.hierarchyOrder()
             .asReversed()
             .forEach { node ->
 
-                val result =
+                results[node.id] =
                     calculateNode(
                         system = system,
                         node = node
                     )
-
-                results.add(result)
             }
 
-        /*
-         * Return in normal hierarchy order.
-         */
         return system.hierarchyOrder()
             .mapNotNull { node ->
-
-                results.firstOrNull {
-                    it.nodeId == node.id
-                }
+                results[node.id]
             }
     }
 
-
-    /**
-     * Calculate one node.
-     */
     private fun calculateNode(
         system: DistributionSystem,
         node: DistributionNode
     ): NodeCalculation {
 
         /*
-         * Direct loads.
+         * Build one engineering load list containing
+         * the node's own loads and all descendant loads.
          */
-        var connectedKW =
-            node.connectedLoadKW()
-
-        var demandKW =
-            node.demandLoadKW()
-
-        var demandKVA =
-            node.demandLoadKVA()
-
-
-        /*
-         * Add all child loads.
-         *
-         * This means:
-         *
-         * DB = own loads + child loads
-         *
-         * SMDB = own loads + all DB loads
-         *
-         * MDB = own loads + all SMDB/DB loads
-         */
-        val children =
-            system.getChildren(node.id)
-
-        children.forEach { child ->
-
-            connectedKW +=
-                childAccumulatedConnectedKW(
-                    system,
-                    child
-                )
-
-            demandKW +=
-                childAccumulatedDemandKW(
-                    system,
-                    child
-                )
-
-            demandKVA +=
-                childAccumulatedDemandKVA(
-                    system,
-                    child
-                )
-        }
-
-
-        /*
-         * Calculate current.
-         */
-        val currentA =
-            calculateCurrent(
-                node = node,
-                demandKVA = demandKVA
+        val accumulatedLoads =
+            collectLoads(
+                system = system,
+                node = node
             )
 
+        val phaseSystem =
+            when (node.phaseType) {
+                PhaseType.THREE_PHASE ->
+                    ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
 
-        /*
-         * Calculate loading.
-         */
-        val loadingPercent =
-            if (node.ratedCapacity > 0.0) {
-
-                when (node.type) {
-
-                    DistributionNodeType.TRANSFORMER -> {
-                        demandKVA /
-                                node.ratedCapacity *
-                                100.0
-                    }
-
-                    else -> {
-                        currentA /
-                                node.ratedCapacity *
-                                100.0
-                    }
-                }
-
-            } else {
-                0.0
+                PhaseType.SINGLE_PHASE_L1,
+                PhaseType.SINGLE_PHASE_L2,
+                PhaseType.SINGLE_PHASE_L3 ->
+                    ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
             }
 
+        val systemInput =
+            ProfessionalEngineeringCore.SystemInput(
+                voltageV = node.voltage,
+                frequencyHz = 50.0,
+                phaseSystem = phaseSystem,
+                powerFactor = determineSystemPowerFactor(
+                    accumulatedLoads
+                )
+            )
 
-        /*
-         * Determine status.
-         */
+        val coreResult =
+            ProfessionalEngineeringCore.calculateLoads(
+                loads = accumulatedLoads,
+                system = systemInput
+            )
+
+        val connectedKW =
+            coreResult.connectedKW
+
+        val demandKW =
+            coreResult.demandKW
+
+        val demandKVA =
+            coreResult.demandKVA
+
+        val currentA =
+            coreResult.currentA
+
+        val loadingPercent =
+            calculateLoading(
+                node = node,
+                demandKVA = demandKVA,
+                currentA = currentA
+            )
+
         val status =
-
             when {
+
+                coreResult.checks.any {
+                    it.status == EngineeringStatus.FAIL
+                } ->
+                    NodeStatus.ERROR
 
                 loadingPercent > 100.0 ->
                     NodeStatus.ERROR
@@ -193,158 +128,169 @@ object DistributionCalculator {
                     NodeStatus.CALCULATED
             }
 
-
         return NodeCalculation(
-
             nodeId = node.id,
-
             nodeName = node.name,
-
             nodeType = node.type,
-
             connectedKW = connectedKW,
-
             demandKW = demandKW,
-
             demandKVA = demandKVA,
-
             currentA = currentA,
-
             loadingPercent = loadingPercent,
-
             status = status
         )
     }
 
-
     /**
-     * Connected load including all descendants.
+     * Collect own loads + all descendant loads.
      */
-    private fun childAccumulatedConnectedKW(
+    private fun collectLoads(
         system: DistributionSystem,
         node: DistributionNode
-    ): Double {
+    ): List<ProfessionalEngineeringCore.LoadInput> {
 
-        var total =
-            node.connectedLoadKW()
+        val loads =
+            mutableListOf<ProfessionalEngineeringCore.LoadInput>()
+
+        addNodeLoads(
+            node = node,
+            target = loads
+        )
 
         system.getChildren(node.id)
             .forEach { child ->
 
-                total +=
-                    childAccumulatedConnectedKW(
-                        system,
-                        child
+                loads +=
+                    collectLoads(
+                        system = system,
+                        node = child
                     )
             }
 
-        return total
+        return loads
     }
 
-
     /**
-     * Demand load including descendants.
+     * Convert DistributionLoad into Core LoadInput.
      */
-    private fun childAccumulatedDemandKW(
-        system: DistributionSystem,
-        node: DistributionNode
-    ): Double {
-
-        var total =
-            node.demandLoadKW()
-
-        system.getChildren(node.id)
-            .forEach { child ->
-
-                total +=
-                    childAccumulatedDemandKW(
-                        system,
-                        child
-                    )
-            }
-
-        return total
-    }
-
-
-    /**
-     * Demand kVA including descendants.
-     */
-    private fun childAccumulatedDemandKVA(
-        system: DistributionSystem,
-        node: DistributionNode
-    ): Double {
-
-        var total =
-            node.demandLoadKVA()
-
-        system.getChildren(node.id)
-            .forEach { child ->
-
-                total +=
-                    childAccumulatedDemandKVA(
-                        system,
-                        child
-                    )
-            }
-
-        return total
-    }
-
-
-    /**
-     * Current calculation.
-     *
-     * Three phase:
-     *
-     * I = S / (√3 × V)
-     *
-     * Single phase:
-     *
-     * I = S / V
-     */
-    private fun calculateCurrent(
+    private fun addNodeLoads(
         node: DistributionNode,
-        demandKVA: Double
+        target: MutableList<ProfessionalEngineeringCore.LoadInput>
+    ) {
+
+        node.loads.forEach { load ->
+
+            target +=
+                ProfessionalEngineeringCore.LoadInput(
+                    name = load.name,
+                    quantity = load.quantity.toDouble(),
+                    unitPowerKW = load.unitKW,
+                    demandFactor = load.demandFactor,
+                    powerFactor = load.powerFactor
+                )
+        }
+    }
+
+    /**
+     * Determine representative PF without performing
+     * an electrical calculation outside the Core.
+     *
+     * The Core performs the actual PF calculation from
+     * active/reactive power.
+     */
+    private fun determineSystemPowerFactor(
+        loads: List<ProfessionalEngineeringCore.LoadInput>
     ): Double {
 
-        val kvaVA =
-            demandKVA * 1000.0
+        if (loads.isEmpty()) {
+            return 1.0
+        }
 
-        return when (node.phaseType) {
+        val weighted =
+            loads.sumOf { load ->
 
-            PhaseType.THREE_PHASE -> {
+                val quantity =
+                    load.quantity.coerceAtLeast(0.0)
 
-                if (node.voltage <= 0.0) {
-                    0.0
-                } else {
+                val power =
+                    load.unitPowerKW.coerceAtLeast(0.0)
 
-                    kvaVA /
-                            (
-                                sqrt(3.0) *
-                                        node.voltage
-                                )
-                }
+                val demandFactor =
+                    load.demandFactor.coerceIn(0.0, 1.0)
+
+                quantity *
+                        power *
+                        demandFactor
             }
 
-            PhaseType.SINGLE_PHASE_L1,
-            PhaseType.SINGLE_PHASE_L2,
-            PhaseType.SINGLE_PHASE_L3 -> {
+        if (weighted <= 0.0) {
+            return 1.0
+        }
 
-                if (node.voltage <= 0.0) {
-                    0.0
-                } else {
+        val weightedPF =
+            loads.sumOf { load ->
 
-                    kvaVA /
-                            node.voltage
-                }
+                val quantity =
+                    load.quantity.coerceAtLeast(0.0)
+
+                val power =
+                    load.unitPowerKW.coerceAtLeast(0.0)
+
+                val demandFactor =
+                    load.demandFactor.coerceIn(0.0, 1.0)
+
+                val pf =
+                    load.powerFactor.coerceIn(0.01, 1.0)
+
+                quantity *
+                        power *
+                        demandFactor *
+                        pf
+            } / weighted
+
+        return weightedPF.coerceIn(0.01, 1.0)
+    }
+
+    /**
+     * Loading is a presentation/assessment value.
+     *
+     * Transformer:
+     * demand kVA / transformer kVA
+     *
+     * Other nodes:
+     * current / rated capacity
+     */
+    private fun calculateLoading(
+        node: DistributionNode,
+        demandKVA: Double,
+        currentA: Double
+    ): Double {
+
+        if (node.ratedCapacity <= 0.0) {
+            return 0.0
+        }
+
+        return when (node.type) {
+
+            DistributionNodeType.TRANSFORMER -> {
+                demandKVA /
+                        node.ratedCapacity *
+                        100.0
+            }
+
+            else -> {
+                currentA /
+                        node.ratedCapacity *
+                        100.0
             }
         }
     }
 
-
     /**
      * Calculate transformer loading.
+     *
+     * Transformer sizing itself will be moved to the
+     * engineering core/catalog layer in the next stage.
      */
     fun transformerLoading(
         system: DistributionSystem
@@ -354,70 +300,62 @@ object DistributionCalculator {
             system.getTransformer()
                 ?: return null
 
-        val demandKVA =
+        val calculation =
             calculate(system)
                 .firstOrNull {
                     it.nodeId == transformer.id
                 }
-                ?.demandKVA
-                ?: 0.0
+                ?: return null
 
+        val demandKVA =
+            calculation.demandKVA
 
         val loadingPercent =
             if (transformer.ratedCapacity > 0.0) {
-
                 demandKVA /
                         transformer.ratedCapacity *
                         100.0
-
             } else {
                 0.0
             }
-
 
         val recommendedKVA =
             recommendTransformerSize(
                 demandKVA
             )
 
-
         return TransformerLoadingResult(
-
-            transformerId =
-                transformer.id,
-
-            transformerName =
-                transformer.name,
-
+            transformerId = transformer.id,
+            transformerName = transformer.name,
             transformerRatingKVA =
                 transformer.ratedCapacity,
-
-            demandKVA =
-                demandKVA,
-
-            loadingPercent =
-                loadingPercent,
-
-            recommendedKVA =
-                recommendedKVA,
-
-            overloaded =
-                loadingPercent > 100.0,
-
-            warning =
-                loadingPercent > 85.0
+            demandKVA = demandKVA,
+            loadingPercent = loadingPercent,
+            recommendedKVA = recommendedKVA,
+            overloaded = loadingPercent > 100.0,
+            warning = loadingPercent > 85.0
         )
     }
 
-
     /**
-     * Transformer recommendation.
+     * Temporary standard transformer selection.
      *
-     * We keep a standard rating sequence.
+     * This is NOT an electrical calculation.
+     * It is a catalog/standard-rating lookup.
+     *
+     * This list will later be moved into the
+     * EngineeringCatalogRepository.
      */
     private fun recommendTransformerSize(
         demandKVA: Double
     ): Double {
+
+        if (demandKVA <= 0.0) {
+            return 0.0
+        }
+
+        val requiredKVA =
+            demandKVA * 1.15
 
         val standardRatings =
             listOf(
@@ -438,39 +376,21 @@ object DistributionCalculator {
                 4000.0
             )
 
-        /*
-         * Design margin.
-         */
-        val required =
-            demandKVA * 1.15
-
         return standardRatings
             .firstOrNull {
-                it >= required
+                it >= requiredKVA
             }
             ?: standardRatings.last()
     }
 }
 
-
-/**
- * Transformer result.
- */
 data class TransformerLoadingResult(
-
     val transformerId: String,
-
     val transformerName: String,
-
     val transformerRatingKVA: Double,
-
     val demandKVA: Double,
-
     val loadingPercent: Double,
-
     val recommendedKVA: Double,
-
     val overloaded: Boolean,
-
     val warning: Boolean
 )
