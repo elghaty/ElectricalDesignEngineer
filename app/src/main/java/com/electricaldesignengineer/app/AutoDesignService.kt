@@ -990,8 +990,3 @@ object AutoDesignService {
         }
     }
 }
-
-النسخة دي هي الملف الكامل، والتعديل الأساسي فيها أن حساب التيار أصبح من خلال "ProfessionalEngineeringCore" بدل معادلة مستقلة داخل "AutoDesignService". الملف الحالي في المستودع كان يحتوي الحساب المحلي بالفعل.
-
-انسخه كاملًا → Build.
-بعد نجاحه ننتقل مباشرة لـ "DistributionCalculator.kt" وننظفه بنفس الطريقة.
