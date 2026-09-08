@@ -26,6 +26,12 @@ package com.electricaldesignengineer.app
  * Protection Check
  *   ↓
  * Final Design Status
+ *
+ * NOTE:
+ * This service is currently a compatibility/orchestration layer.
+ * Legacy EngineeringDesignEngine APIs are still used temporarily.
+ * The final target is to move these calculations to
+ * ProfessionalEngineeringCore.
  */
 object AutoDesignService {
 
@@ -43,14 +49,11 @@ object AutoDesignService {
 
         val cableSizeMm2: Double,
 
-        val cableMaterial:
-            EngineeringDesignEngine.CableMaterial,
+        val cableMaterial: CableMaterial,
 
-        val insulation:
-            EngineeringDesignEngine.InsulationType,
+        val insulation: InsulationType,
 
-        val installationMethod:
-            EngineeringDesignEngine.InstallationMethod,
+        val installationMethod: InstallationMethod,
 
         val parallelRuns: Int,
 
@@ -85,8 +88,7 @@ object AutoDesignService {
 
         val feeders: List<FeederResult>,
 
-        val transformer:
-            TransformerLoadingResult?,
+        val transformer: TransformerLoadingResult?,
 
         val totalConnectedKW: Double,
 
@@ -107,9 +109,7 @@ object AutoDesignService {
 
     fun design(
         system: DistributionSystem,
-
         defaultMaximumVoltageDropPercent: Double = 5.0
-
     ): SystemResult {
 
         val systemWarnings =
@@ -160,7 +160,7 @@ object AutoDesignService {
                     node.feeder
 
                 // ------------------------------------------------
-                // No feeder
+                // NO FEEDER
                 // ------------------------------------------------
 
                 if (feeder == null) {
@@ -179,14 +179,12 @@ object AutoDesignService {
                 }
 
                 // ------------------------------------------------
-                // Find calculation
+                // FIND CALCULATION
                 // ------------------------------------------------
 
                 val calculation =
                     calculations.firstOrNull {
-
-                        it.nodeId ==
-                                node.id
+                        it.nodeId == node.id
                     }
 
                 if (calculation == null) {
@@ -232,14 +230,10 @@ object AutoDesignService {
 
                 val maxVoltageDrop =
                     if (
-                        feeder.maximumVoltageDropPercent >
-                        0.0
+                        feeder.maximumVoltageDropPercent > 0.0
                     ) {
-
                         feeder.maximumVoltageDropPercent
-
                     } else {
-
                         defaultMaximumVoltageDropPercent
                     }
 
@@ -261,6 +255,32 @@ object AutoDesignService {
                             PhaseType.THREE_PHASE
 
                 // ------------------------------------------------
+                // LEGACY ENUM ADAPTERS
+                //
+                // AutoDesignService now exposes the new shared
+                // engineering types, while the legacy engine
+                // temporarily requires its own nested enums.
+                // ------------------------------------------------
+
+                val legacyCableMaterial =
+                    EngineeringDesignEngine.CableMaterial
+                        .valueOf(
+                            feeder.cableMaterial.name
+                        )
+
+                val legacyInsulation =
+                    EngineeringDesignEngine.InsulationType
+                        .valueOf(
+                            feeder.insulation.name
+                        )
+
+                val legacyInstallationMethod =
+                    EngineeringDesignEngine.InstallationMethod
+                        .valueOf(
+                            feeder.installationMethod.name
+                        )
+
+                // ------------------------------------------------
                 // CABLE SELECTION
                 // ------------------------------------------------
 
@@ -272,15 +292,11 @@ object AutoDesignService {
 
                         lengthM =
                             feeder.lengthMeters
-                                .coerceAtLeast(
-                                    0.1
-                                ),
+                                .coerceAtLeast(0.1),
 
                         voltageV =
                             node.voltage
-                                .coerceAtLeast(
-                                    1.0
-                                ),
+                                .coerceAtLeast(1.0),
 
                         powerFactor =
                             powerFactor,
@@ -289,16 +305,16 @@ object AutoDesignService {
                             threePhase,
 
                         material =
-                            feeder.cableMaterial,
+                            legacyCableMaterial,
 
                         insulation =
-                            feeder.insulation,
+                            legacyInsulation,
 
                         cores =
                             feeder.numberOfCores,
 
                         installationMethod =
-                            feeder.installationMethod,
+                            legacyInstallationMethod,
 
                         maxVoltageDropPercent =
                             maxVoltageDrop
@@ -384,9 +400,7 @@ object AutoDesignService {
                                 emptyList(),
 
                             errors =
-                                listOf(
-                                    error
-                                )
+                                listOf(error)
                         )
                     )
 
@@ -540,9 +554,7 @@ object AutoDesignService {
                                 emptyList(),
 
                             errors =
-                                listOf(
-                                    error
-                                )
+                                listOf(error)
                         )
                     )
 
@@ -576,8 +588,7 @@ object AutoDesignService {
                             ib,
 
                         breakerIn =
-                            breaker.ratingA
-                                .toDouble(),
+                            breaker.ratingA.toDouble(),
 
                         iz =
                             cableResult
@@ -609,8 +620,7 @@ object AutoDesignService {
                 // ------------------------------------------------
 
                 if (
-                    cableResult
-                        .voltageDropPercent >
+                    cableResult.voltageDropPercent >
                     maxVoltageDrop
                 ) {
 
@@ -632,8 +642,7 @@ object AutoDesignService {
                 // ------------------------------------------------
 
                 if (
-                    cableResult
-                        .correctedAmpacityA <
+                    cableResult.correctedAmpacityA <
                     ib
                 ) {
 
@@ -654,8 +663,7 @@ object AutoDesignService {
 
                 if (
                     ib >
-                    breaker.ratingA
-                        .toDouble()
+                    breaker.ratingA.toDouble()
                 ) {
 
                     errors.add(
@@ -668,10 +676,8 @@ object AutoDesignService {
                 // ------------------------------------------------
 
                 if (
-                    breaker.ratingA
-                        .toDouble() >
-                    cableResult
-                        .correctedAmpacityA
+                    breaker.ratingA.toDouble() >
+                    cableResult.correctedAmpacityA
                 ) {
 
                     errors.add(
@@ -717,11 +723,9 @@ object AutoDesignService {
                 // ------------------------------------------------
 
                 if (
-                    cableResult
-                        .voltageDropPercent >
+                    cableResult.voltageDropPercent >
                     maxVoltageDrop * 0.90 &&
-                    cableResult
-                        .voltageDropPercent <=
+                    cableResult.voltageDropPercent <=
                     maxVoltageDrop
                 ) {
 
@@ -740,7 +744,6 @@ object AutoDesignService {
                 ) {
 
                     warnings.add(
-
                         "${node.name} loading exceeds 90%."
                     )
                 }
@@ -798,8 +801,7 @@ object AutoDesignService {
                             cableResult.parallelRuns,
 
                         cableAmpacityA =
-                            cableResult
-                                .correctedAmpacityA,
+                            cableResult.correctedAmpacityA,
 
                         correctionFactor =
                             cableResult
@@ -814,8 +816,7 @@ object AutoDesignService {
                             maxVoltageDrop,
 
                         breakerRatingA =
-                            breaker.ratingA
-                                .toDouble(),
+                            breaker.ratingA.toDouble(),
 
                         breakerIcuKA =
                             breaker.icuKA,
@@ -1061,12 +1062,14 @@ object AutoDesignService {
         }
 
         /*
-         * Preliminary transformer short-circuit calculation.
+         * Temporary compatibility calculation.
          *
-         * Default transformer impedance = 6%.
+         * This will later be migrated to
+         * ProfessionalEngineeringCore.
          *
-         * This value should later be replaced by the actual
-         * transformer nameplate impedance.
+         * The 6% impedance is currently a preliminary
+         * fallback and must eventually be replaced by
+         * actual transformer nameplate data.
          */
 
         val transformerFaultKA =
