@@ -21,12 +21,13 @@ package com.electricaldesignengineer.app
  * - Does NOT invent transformer impedance.
  * - Cable is selected automatically by ProfessionalEngineeringCore.
  * - Breaker is selected automatically by ProfessionalEngineeringCore.
+ * - Transformer is selected automatically by ProfessionalEngineeringCore.
  * - Engineer can later override the selected cable from the UI.
  */
 object AutoDesignService {
 
     // ============================================================
-    // RESULT MODELS
+    // FEEDER RESULT
     // ============================================================
 
     data class FeederResult(
@@ -47,9 +48,32 @@ object AutoDesignService {
         val warnings: List<String> = emptyList()
     )
 
+    // ============================================================
+    // SYSTEM RESULT
+    // ============================================================
+
     data class SystemResult(
         val system: DistributionSystem,
         val feeders: List<FeederResult>,
+        val valid: Boolean,
+        val message: String,
+        val warnings: List<String> = emptyList()
+    )
+
+    // ============================================================
+    // TRANSFORMER RESULT
+    // ============================================================
+
+    data class TransformerResult(
+        val requiredKVA: Double,
+        val selectedTransformer:
+            ProfessionalEngineeringCore.TransformerData?,
+        val selectedKVA: Double?,
+        val primaryVoltageV: Double?,
+        val secondaryVoltageV: Double?,
+        val frequencyHz: Double?,
+        val impedancePercent: Double?,
+        val status: EngineeringStatus,
         val valid: Boolean,
         val message: String,
         val warnings: List<String> = emptyList()
@@ -94,15 +118,136 @@ object AutoDesignService {
         }
 
     // ============================================================
-    // MAIN DESIGN
+    // TRANSFORMER DATA
+    // ============================================================
+
+    private fun getTransformerData():
+        List<ProfessionalEngineeringCore.TransformerData> {
+
+        return EngineeringCatalogRepository
+            .allTransformers()
+            .filter { it.verified }
+            .map { transformer ->
+
+                ProfessionalEngineeringCore.TransformerData(
+                    id = transformer.id,
+                    manufacturerId = transformer.manufacturerId,
+                    manufacturerName = transformer.manufacturerName,
+                    catalogId = transformer.catalogId,
+                    catalogName = transformer.catalogName,
+                    catalogRevision = transformer.catalogRevision,
+                    productFamily = transformer.productFamily,
+                    partNumber = transformer.partNumber,
+                    ratedPowerKVA = transformer.ratedPowerKVA,
+                    primaryVoltageV = transformer.primaryVoltageV,
+                    secondaryVoltageV = transformer.secondaryVoltageV,
+                    frequencyHz = transformer.frequencyHz,
+                    vectorGroup = transformer.vectorGroup,
+                    impedancePercent = transformer.impedancePercent,
+                    noLoadLossKW = transformer.noLoadLossKW,
+                    loadLossKW = transformer.loadLossKW,
+                    coolingClass = transformer.coolingClass,
+                    standardCode = transformer.standardCode,
+                    sourceUrl = transformer.sourceUrl,
+                    verified = transformer.verified
+                )
+            }
+    }
+
+    // ============================================================
+    // TRANSFORMER DESIGN
+    // ============================================================
+
+    fun designTransformer(
+        demandKVA: Double,
+        designMarginPercent: Double = 0.0,
+        primaryVoltageV: Double? = null,
+        secondaryVoltageV: Double? = null,
+        frequencyHz: Double? = null
+    ): TransformerResult {
+
+        val input =
+            ProfessionalEngineeringCore.TransformerDesignInput(
+                requiredKVA = demandKVA,
+                designMarginPercent = designMarginPercent,
+                requiredPrimaryVoltageV = primaryVoltageV,
+                requiredSecondaryVoltageV = secondaryVoltageV,
+                requiredFrequencyHz = frequencyHz
+            )
+
+        val result =
+            ProfessionalEngineeringCore.designTransformer(
+                input = input,
+                transformers = getTransformerData()
+            )
+
+        val transformer =
+            result.selectedTransformer
+
+        return TransformerResult(
+            requiredKVA = result.requiredKVA,
+
+            selectedTransformer =
+                transformer,
+
+            selectedKVA =
+                transformer?.ratedPowerKVA,
+
+            primaryVoltageV =
+                transformer?.primaryVoltageV,
+
+            secondaryVoltageV =
+                transformer?.secondaryVoltageV,
+
+            frequencyHz =
+                transformer?.frequencyHz,
+
+            impedancePercent =
+                transformer?.impedancePercent,
+
+            status =
+                result.status,
+
+            valid =
+                result.status == EngineeringStatus.PASS,
+
+            message =
+                when (result.status) {
+
+                    EngineeringStatus.PASS ->
+                        "PASS: transformer selected successfully."
+
+                    EngineeringStatus.DATA_REQUIRED ->
+                        "DATA_REQUIRED: verified transformer catalog data is required."
+
+                    EngineeringStatus.FAIL ->
+                        "FAIL: transformer requirements are invalid."
+
+                    EngineeringStatus.WARNING ->
+                        "WARNING: transformer selection requires engineering review."
+
+                    EngineeringStatus.NOT_CALCULATED ->
+                        "Transformer selection was not calculated."
+                },
+
+            warnings =
+                result.trace.warnings
+        )
+    }
+
+    // ============================================================
+    // MAIN SYSTEM DESIGN
     // ============================================================
 
     fun designSystem(
         system: DistributionSystem
     ): SystemResult {
 
-        val systemWarnings = mutableListOf<String>()
-        val feederResults = mutableListOf<FeederResult>()
+        val systemWarnings =
+            mutableListOf<String>()
+
+        val feederResults =
+            mutableListOf<FeederResult>()
 
         return try {
 
@@ -112,7 +257,8 @@ object AutoDesignService {
                 }
                 .forEach { node ->
 
-                    val feeder = node.feeder
+                    val feeder =
+                        node.feeder
 
                     if (feeder == null) {
 
@@ -144,13 +290,17 @@ object AutoDesignService {
                             )
 
                         feederResults += result
-                        systemWarnings += result.warnings
+
+                        systemWarnings +=
+                            result.warnings
                     }
                 }
 
             val valid =
                 feederResults.isNotEmpty() &&
-                        feederResults.all { it.valid }
+                        feederResults.all {
+                            it.valid
+                        }
 
             val message =
                 if (valid) {
@@ -164,7 +314,8 @@ object AutoDesignService {
                 feeders = feederResults,
                 valid = valid,
                 message = message,
-                warnings = systemWarnings.distinct()
+                warnings =
+                    systemWarnings.distinct()
             )
 
         } catch (exception: Exception) {
@@ -180,7 +331,9 @@ object AutoDesignService {
                     }",
                 warnings =
                     systemWarnings
-                        .plus("Automatic design calculation failed.")
+                        .plus(
+                            "Automatic design calculation failed."
+                        )
                         .distinct()
             )
         }
@@ -196,10 +349,11 @@ object AutoDesignService {
         feeder: FeederDesign
     ): FeederResult {
 
-        val warnings = mutableListOf<String>()
+        val warnings =
+            mutableListOf<String>()
 
         // --------------------------------------------------------
-        // 1. Calculate design current
+        // 1. Design current
         // --------------------------------------------------------
 
         val designCurrent =
@@ -217,10 +371,11 @@ object AutoDesignService {
             )
         }
 
-        feeder.designCurrentIb = designCurrent
+        feeder.designCurrentIb =
+            designCurrent
 
         // --------------------------------------------------------
-        // 2. Validate feeder length
+        // 2. Feeder length
         // --------------------------------------------------------
 
         if (feeder.lengthMeters <= 0.0) {
@@ -234,7 +389,7 @@ object AutoDesignService {
         }
 
         // --------------------------------------------------------
-        // 3. Validate voltage
+        // 3. Voltage
         // --------------------------------------------------------
 
         if (node.voltage <= 0.0) {
@@ -248,7 +403,7 @@ object AutoDesignService {
         }
 
         // --------------------------------------------------------
-        // 4. Determine phase system
+        // 4. Phase system
         // --------------------------------------------------------
 
         val phaseSystem =
@@ -264,7 +419,7 @@ object AutoDesignService {
             }
 
         // --------------------------------------------------------
-        // 5. Number of loaded conductors
+        // 5. Loaded conductors
         // --------------------------------------------------------
 
         val loadedConductors =
@@ -293,10 +448,11 @@ object AutoDesignService {
                 .coerceIn(0.0001, 1.0)
 
         // --------------------------------------------------------
-        // 8. Maximum automatic parallel runs
+        // 8. Maximum parallel runs
         // --------------------------------------------------------
 
-        val maximumParallelRuns = 8
+        val maximumParallelRuns =
+            8
 
         // --------------------------------------------------------
         // 9. Maximum voltage drop
@@ -388,13 +544,18 @@ object AutoDesignService {
                 nodeName = node.name,
                 designCurrentA = designCurrent,
                 cableSizeMm2 = null,
-                parallelRuns = cableResult.parallelRuns,
+                parallelRuns =
+                    cableResult.parallelRuns,
                 ampacityIzA =
                     cableResult.totalAmpacityA
-                        .takeIf { it > 0.0 },
+                        .takeIf {
+                            it > 0.0
+                        },
                 voltageDropPercent =
                     cableResult.voltageDropPercent
-                        .takeIf { it >= 0.0 },
+                        .takeIf {
+                            it >= 0.0
+                        },
                 breakerRatingA = null,
                 breakerIcuKA = null,
                 breakerIcsKA = null,
@@ -411,7 +572,7 @@ object AutoDesignService {
         }
 
         // --------------------------------------------------------
-        // 12. Store automatically selected cable
+        // 12. Store selected cable
         // --------------------------------------------------------
 
         feeder.conductorSizeMm2 =
@@ -430,7 +591,7 @@ object AutoDesignService {
             true
 
         // --------------------------------------------------------
-        // 13. Short-circuit source
+        // 13. Short circuit source
         // --------------------------------------------------------
 
         val shortCircuitKA =
@@ -471,7 +632,7 @@ object AutoDesignService {
             }
 
         // --------------------------------------------------------
-        // 14. Store short-circuit current
+        // 14. Store short circuit
         // --------------------------------------------------------
 
         feeder.shortCircuitCurrentKA =
@@ -591,7 +752,7 @@ object AutoDesignService {
             )
 
         // --------------------------------------------------------
-        // 19. Voltage-drop check
+        // 19. Voltage drop
         // --------------------------------------------------------
 
         val voltageDropPassed =
@@ -686,12 +847,6 @@ object AutoDesignService {
     // DESIGN CURRENT
     // ============================================================
 
-    /**
-     * Design current is calculated exclusively by
-     * ProfessionalEngineeringCore.
-     *
-     * AutoDesignService is an orchestrator only.
-     */
     private fun calculateDesignCurrent(
         node: DistributionNode,
         feeder: FeederDesign
@@ -701,6 +856,7 @@ object AutoDesignService {
          * If the feeder already contains a valid current
          * calculated by the engineering core, use it.
          */
+
         if (feeder.designCurrentIb > 0.0) {
             return feeder.designCurrentIb
         }
@@ -788,13 +944,6 @@ object AutoDesignService {
                 ?: 0.9
         }
 
-        /*
-         * This value is used only as the representative PF
-         * supplied to the Core load calculation.
-         *
-         * The actual demand current is calculated from
-         * demand kVA inside ProfessionalEngineeringCore.
-         */
         val weightedPF =
             node.loads.sumOf { load ->
 
@@ -843,7 +992,7 @@ object AutoDesignService {
         }
 
         // --------------------------------------------------------
-        // Icu >= prospective short-circuit current
+        // Icu >= prospective short circuit
         // --------------------------------------------------------
 
         val breakingCapacityPassed =
@@ -858,7 +1007,7 @@ object AutoDesignService {
         }
 
         // --------------------------------------------------------
-        // Ics check
+        // Ics
         // --------------------------------------------------------
 
         val serviceBreakingCapacityPassed =
@@ -943,7 +1092,7 @@ object AutoDesignService {
     }
 
     // ============================================================
-    // STATUS MESSAGES
+    // CABLE STATUS
     // ============================================================
 
     private fun cableStatusMessage(
@@ -967,6 +1116,10 @@ object AutoDesignService {
                 "Cable design requires review."
         }
     }
+
+    // ============================================================
+    // BREAKER STATUS
+    // ============================================================
 
     private fun breakerStatusMessage(
         status: EngineeringStatus
