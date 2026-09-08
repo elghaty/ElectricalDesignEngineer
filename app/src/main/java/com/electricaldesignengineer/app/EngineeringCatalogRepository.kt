@@ -39,10 +39,10 @@ object EngineeringCatalogRepository {
         val partNumber: String?,
 
         val material:
-            EngineeringDesignEngine.CableMaterial,
+            CableMaterial,
 
         val insulation:
-            EngineeringDesignEngine.InsulationType,
+            InsulationType,
 
         val cores: Int,
 
@@ -51,7 +51,7 @@ object EngineeringCatalogRepository {
         val voltageRatingV: Int,
 
         val installationMethod:
-            EngineeringDesignEngine.InstallationMethod,
+            InstallationMethod,
 
         /**
          * Ampacity obtained from the selected engineering data source.
@@ -344,13 +344,13 @@ object EngineeringCatalogRepository {
      */
     fun getCableData(
         material:
-            EngineeringDesignEngine.CableMaterial,
+            CableMaterial,
 
         insulation:
-            EngineeringDesignEngine.InsulationType,
+            InsulationType,
 
         installationMethod:
-            EngineeringDesignEngine.InstallationMethod
+            InstallationMethod
     ): List<ProfessionalEngineeringCore.CableData> {
 
         return cableRecords
@@ -461,9 +461,9 @@ object EngineeringCatalogRepository {
     fun searchCables(
         manufacturerId: String? = null,
         material:
-            EngineeringDesignEngine.CableMaterial? = null,
+            CableMaterial? = null,
         insulation:
-            EngineeringDesignEngine.InsulationType? = null,
+            InsulationType? = null,
         minimumSizeMm2: Double? = null,
         maximumSizeMm2: Double? = null
     ): List<CableRecord> {
