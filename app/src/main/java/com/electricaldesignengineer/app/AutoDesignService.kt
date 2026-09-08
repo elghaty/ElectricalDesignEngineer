@@ -726,7 +726,7 @@ object AutoDesignService {
 
                 ProfessionalEngineeringCore.LoadInput(
                     name = load.name,
-                    quantity = load.quantity,
+                    quantity = load.quantity.toDouble(),
                     unitPowerKW = load.unitKW,
                     demandFactor = load.demandFactor,
                     powerFactor = load.powerFactor
