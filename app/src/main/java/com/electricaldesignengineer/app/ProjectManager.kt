@@ -6,7 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
 /**
- * Project state manager.
+ * Central project state manager.
  *
  * Architecture:
  *
@@ -18,12 +18,12 @@ import androidx.compose.runtime.setValue
  *
  * IMPORTANT:
  * ProjectManager stores project state only.
- * Engineering calculations are delegated to
+ *
+ * All engineering calculations are performed by
  * ProfessionalEngineeringCore.
  *
- * ElectricalCalculator is retained temporarily only
- * for legacy compatibility with screens that have not
- * yet been migrated.
+ * ElectricalCalculator has been completely removed
+ * from the project calculation path.
  */
 object ProjectManager {
 
@@ -59,15 +59,6 @@ object ProjectManager {
         )
 
         _loads.clear()
-
-        /*
-         * Temporary legacy compatibility.
-         *
-         * This will be removed after all remaining
-         * legacy screens are migrated away from
-         * ElectricalCalculator.
-         */
-        ElectricalCalculator.reset()
     }
 
     // ============================================================
@@ -89,7 +80,7 @@ object ProjectManager {
     }
 
     // ============================================================
-    // SYSTEM
+    // ELECTRICAL SYSTEM
     // ============================================================
 
     fun updateSystem(
@@ -124,15 +115,19 @@ object ProjectManager {
     }
 
     /**
-     * Calculates the complete project load through
-     * ProfessionalEngineeringCore.
+     * Performs the complete project load calculation.
      *
-     * ProjectManager does NOT perform:
-     * - connected load calculation
-     * - demand load calculation
-     * - kVA calculation
-     * - effective PF calculation
-     * - current calculation
+     * ProjectManager deliberately does NOT calculate:
+     *
+     * - Connected load
+     * - Demand load
+     * - Reactive power
+     * - Demand kVA
+     * - Effective power factor
+     * - Design current
+     *
+     * All of these are calculated by
+     * ProfessionalEngineeringCore.
      */
     fun calculateFromLoads(): ProjectCalculation {
 
@@ -153,6 +148,7 @@ object ProjectManager {
 
         val loadInputs =
             _loads.map { load ->
+
                 ProfessionalEngineeringCore.LoadInput(
                     name = load.name,
                     quantity = load.quantity,
@@ -173,51 +169,56 @@ object ProjectManager {
                 _loads.isEmpty() ->
                     "NO LOADS"
 
-                result.trace.status == EngineeringStatus.FAIL ->
+                result.trace.status ==
+                    EngineeringStatus.FAIL ->
                     "LOAD CALCULATION FAILED"
 
-                result.trace.status == EngineeringStatus.WARNING ->
+                result.trace.status ==
+                    EngineeringStatus.WARNING ->
                     "LOAD CALCULATION WARNING"
 
-                result.trace.status == EngineeringStatus.DATA_REQUIRED ->
+                result.trace.status ==
+                    EngineeringStatus.DATA_REQUIRED ->
                     "LOAD DATA REQUIRED"
 
                 else ->
                     "LOAD CALCULATION COMPLETE"
             }
 
-        calculation = calculation.copy(
+        calculation =
+            calculation.copy(
 
-            connectedKW =
-                result.connectedKW,
+                connectedKW =
+                    result.connectedKW,
 
-            demandKW =
-                result.demandKW,
+                demandKW =
+                    result.demandKW,
 
-            totalKVA =
-                result.demandKVA,
+                totalKVA =
+                    result.demandKVA,
 
-            designCurrentA =
-                result.currentA,
+                designCurrentA =
+                    result.currentA,
 
-            powerFactor =
-                result.effectivePowerFactor,
+                powerFactor =
+                    result.effectivePowerFactor,
 
-            designStatus =
-                status
-        )
+                designStatus =
+                    status
+            )
 
         return calculation
     }
 
+    // ============================================================
+    // LOAD RESULT
+    // ============================================================
+
     /**
-     * Stores an externally calculated load result.
+     * Stores a result that was already calculated by
+     * the engineering core or another professional service.
      *
-     * This method is retained for compatibility with
-     * existing screens.
-     *
-     * New engineering calculations should call
-     * ProfessionalEngineeringCore directly.
+     * This method does NOT perform engineering calculations.
      */
     fun setLoadCalculation(
         connectedKW: Double,
@@ -228,35 +229,37 @@ object ProjectManager {
         powerFactor: Double = calculation.powerFactor,
         isThreePhase: Boolean = calculation.isThreePhase
     ) {
-        calculation = calculation.copy(
 
-            connectedKW =
-                connectedKW.coerceAtLeast(0.0),
+        calculation =
+            calculation.copy(
 
-            demandKW =
-                demandKW.coerceAtLeast(0.0),
+                connectedKW =
+                    connectedKW.coerceAtLeast(0.0),
 
-            totalKVA =
-                totalKVA.coerceAtLeast(0.0),
+                demandKW =
+                    demandKW.coerceAtLeast(0.0),
 
-            designCurrentA =
-                designCurrentA.coerceAtLeast(0.0),
+                totalKVA =
+                    totalKVA.coerceAtLeast(0.0),
 
-            voltageV =
-                voltageV.coerceAtLeast(0.0),
+                designCurrentA =
+                    designCurrentA.coerceAtLeast(0.0),
 
-            powerFactor =
-                powerFactor.coerceIn(
-                    0.01,
-                    1.0
-                ),
+                voltageV =
+                    voltageV.coerceAtLeast(0.0),
 
-            isThreePhase =
-                isThreePhase,
+                powerFactor =
+                    powerFactor.coerceIn(
+                        0.01,
+                        1.0
+                    ),
 
-            designStatus =
-                "LOAD CALCULATION COMPLETE"
-        )
+                isThreePhase =
+                    isThreePhase,
+
+                designStatus =
+                    "LOAD CALCULATION COMPLETE"
+            )
     }
 
     // ============================================================
@@ -270,26 +273,28 @@ object ProjectManager {
         voltageDropV: Double,
         voltageDropPercent: Double
     ) {
-        calculation = calculation.copy(
 
-            cableSizeMm2 =
-                cableSizeMm2.coerceAtLeast(0.0),
+        calculation =
+            calculation.copy(
 
-            cableAmpacityA =
-                cableAmpacityA.coerceAtLeast(0.0),
+                cableSizeMm2 =
+                    cableSizeMm2.coerceAtLeast(0.0),
 
-            cableLengthM =
-                cableLengthM.coerceAtLeast(0.0),
+                cableAmpacityA =
+                    cableAmpacityA.coerceAtLeast(0.0),
 
-            voltageDropV =
-                voltageDropV.coerceAtLeast(0.0),
+                cableLengthM =
+                    cableLengthM.coerceAtLeast(0.0),
 
-            voltageDropPercent =
-                voltageDropPercent.coerceAtLeast(0.0),
+                voltageDropV =
+                    voltageDropV.coerceAtLeast(0.0),
 
-            designStatus =
-                "CABLE CALCULATION COMPLETE"
-        )
+                voltageDropPercent =
+                    voltageDropPercent.coerceAtLeast(0.0),
+
+                designStatus =
+                    "CABLE CALCULATION COMPLETE"
+            )
     }
 
     // ============================================================
@@ -299,14 +304,16 @@ object ProjectManager {
     fun setShortCircuit(
         shortCircuitKA: Double
     ) {
-        calculation = calculation.copy(
 
-            shortCircuitKA =
-                shortCircuitKA.coerceAtLeast(0.0),
+        calculation =
+            calculation.copy(
 
-            designStatus =
-                "SHORT CIRCUIT CALCULATION COMPLETE"
-        )
+                shortCircuitKA =
+                    shortCircuitKA.coerceAtLeast(0.0),
+
+                designStatus =
+                    "SHORT CIRCUIT CALCULATION COMPLETE"
+            )
     }
 
     // ============================================================
@@ -317,17 +324,19 @@ object ProjectManager {
         breakerRatingA: Int,
         breakerIcuKA: Double
     ) {
-        calculation = calculation.copy(
 
-            breakerRatingA =
-                breakerRatingA.coerceAtLeast(0),
+        calculation =
+            calculation.copy(
 
-            breakerIcuKA =
-                breakerIcuKA.coerceAtLeast(0.0),
+                breakerRatingA =
+                    breakerRatingA.coerceAtLeast(0),
 
-            designStatus =
-                "BREAKER SELECTION COMPLETE"
-        )
+                breakerIcuKA =
+                    breakerIcuKA.coerceAtLeast(0.0),
+
+                designStatus =
+                    "BREAKER SELECTION COMPLETE"
+            )
     }
 
     // ============================================================
@@ -339,31 +348,35 @@ object ProjectManager {
         transformerImpedancePercent: Double =
             calculation.transformerImpedancePercent
     ) {
-        calculation = calculation.copy(
 
-            transformerKVA =
-                transformerKVA.coerceAtLeast(0.0),
+        calculation =
+            calculation.copy(
 
-            transformerImpedancePercent =
-                transformerImpedancePercent.coerceAtLeast(
-                    0.01
-                ),
+                transformerKVA =
+                    transformerKVA.coerceAtLeast(0.0),
 
-            designStatus =
-                "TRANSFORMER SIZING COMPLETE"
-        )
+                transformerImpedancePercent =
+                    transformerImpedancePercent.coerceAtLeast(
+                        0.01
+                    ),
+
+                designStatus =
+                    "TRANSFORMER SIZING COMPLETE"
+            )
     }
 
     fun setTransformerImpedance(
         transformerImpedancePercent: Double
     ) {
-        calculation = calculation.copy(
 
-            transformerImpedancePercent =
-                transformerImpedancePercent.coerceAtLeast(
-                    0.01
-                )
-        )
+        calculation =
+            calculation.copy(
+
+                transformerImpedancePercent =
+                    transformerImpedancePercent.coerceAtLeast(
+                        0.01
+                    )
+            )
     }
 
     // ============================================================
@@ -373,14 +386,16 @@ object ProjectManager {
     fun setGenerator(
         generatorKVA: Double
     ) {
-        calculation = calculation.copy(
 
-            generatorKVA =
-                generatorKVA.coerceAtLeast(0.0),
+        calculation =
+            calculation.copy(
 
-            designStatus =
-                "GENERATOR SIZING COMPLETE"
-        )
+                generatorKVA =
+                    generatorKVA.coerceAtLeast(0.0),
+
+                designStatus =
+                    "GENERATOR SIZING COMPLETE"
+            )
     }
 
     // ============================================================
@@ -390,14 +405,16 @@ object ProjectManager {
     fun setCapacitorBank(
         capacitorKVAR: Double
     ) {
-        calculation = calculation.copy(
 
-            capacitorKVAR =
-                capacitorKVAR.coerceAtLeast(0.0),
+        calculation =
+            calculation.copy(
 
-            designStatus =
-                "POWER FACTOR CORRECTION COMPLETE"
-        )
+                capacitorKVAR =
+                    capacitorKVAR.coerceAtLeast(0.0),
+
+                designStatus =
+                    "POWER FACTOR CORRECTION COMPLETE"
+            )
     }
 
     // ============================================================
@@ -410,164 +427,25 @@ object ProjectManager {
         earthPotentialRiseV: Double,
         maximumEarthResistanceOhm: Double
     ) {
-        calculation = calculation.copy(
 
-            earthResistanceOhm =
-                earthResistanceOhm.coerceAtLeast(0.0),
+        calculation =
+            calculation.copy(
 
-            earthFaultCurrentA =
-                earthFaultCurrentA.coerceAtLeast(0.0),
+                earthResistanceOhm =
+                    earthResistanceOhm.coerceAtLeast(0.0),
 
-            earthPotentialRiseV =
-                earthPotentialRiseV.coerceAtLeast(0.0),
+                earthFaultCurrentA =
+                    earthFaultCurrentA.coerceAtLeast(0.0),
 
-            maximumEarthResistanceOhm =
-                maximumEarthResistanceOhm.coerceAtLeast(0.0),
+                earthPotentialRiseV =
+                    earthPotentialRiseV.coerceAtLeast(0.0),
 
-            designStatus =
-                "EARTHING CHECK COMPLETE"
-        )
-    }
+                maximumEarthResistanceOhm =
+                    maximumEarthResistanceOhm.coerceAtLeast(0.0),
 
-    // ============================================================
-    // LEGACY COMPATIBILITY
-    // ============================================================
-    //
-    // These two methods are intentionally retained temporarily.
-    //
-    // They are NOT used by the new engineering calculation path.
-    //
-    // Once all legacy screens are migrated:
-    // - remove syncToElectricalCalculator()
-    // - remove syncFromElectricalCalculator()
-    // - remove ElectricalCalculator dependency
-    //
-    // ============================================================
-
-    @Deprecated(
-        message = "Legacy compatibility only. Do not use for new calculations."
-    )
-    fun syncToElectricalCalculator() {
-
-        ElectricalCalculator.connectedKW =
-            calculation.connectedKW
-
-        ElectricalCalculator.demandKW =
-            calculation.demandKW
-
-        ElectricalCalculator.totalKVA =
-            calculation.totalKVA
-
-        ElectricalCalculator.designCurrentA =
-            calculation.designCurrentA
-
-        ElectricalCalculator.voltageV =
-            calculation.voltageV
-
-        ElectricalCalculator.powerFactor =
-            calculation.powerFactor
-
-        ElectricalCalculator.isThreePhase =
-            calculation.isThreePhase
-
-        ElectricalCalculator.cableSizeMm2 =
-            calculation.cableSizeMm2
-
-        ElectricalCalculator.cableAmpacityA =
-            calculation.cableAmpacityA
-
-        ElectricalCalculator.cableLengthM =
-            calculation.cableLengthM
-
-        ElectricalCalculator.voltageDropV =
-            calculation.voltageDropV
-
-        ElectricalCalculator.voltageDropPercent =
-            calculation.voltageDropPercent
-
-        ElectricalCalculator.shortCircuitKA =
-            calculation.shortCircuitKA
-
-        ElectricalCalculator.breakerRatingA =
-            calculation.breakerRatingA
-
-        ElectricalCalculator.breakerIcuKA =
-            calculation.breakerIcuKA
-
-        ElectricalCalculator.transformerKVA =
-            calculation.transformerKVA
-
-        ElectricalCalculator.generatorKVA =
-            calculation.generatorKVA
-
-        ElectricalCalculator.capacitorKVAR =
-            calculation.capacitorKVAR
-    }
-
-    @Deprecated(
-        message = "Legacy compatibility only. Do not use for new calculations."
-    )
-    fun syncFromElectricalCalculator() {
-
-        calculation = calculation.copy(
-
-            connectedKW =
-                ElectricalCalculator.connectedKW,
-
-            demandKW =
-                ElectricalCalculator.demandKW,
-
-            totalKVA =
-                ElectricalCalculator.totalKVA,
-
-            designCurrentA =
-                ElectricalCalculator.designCurrentA,
-
-            voltageV =
-                ElectricalCalculator.voltageV,
-
-            powerFactor =
-                ElectricalCalculator.powerFactor.coerceIn(
-                    0.01,
-                    1.0
-                ),
-
-            isThreePhase =
-                ElectricalCalculator.isThreePhase,
-
-            cableSizeMm2 =
-                ElectricalCalculator.cableSizeMm2,
-
-            cableAmpacityA =
-                ElectricalCalculator.cableAmpacityA,
-
-            cableLengthM =
-                ElectricalCalculator.cableLengthM,
-
-            voltageDropV =
-                ElectricalCalculator.voltageDropV,
-
-            voltageDropPercent =
-                ElectricalCalculator.voltageDropPercent,
-
-            shortCircuitKA =
-                ElectricalCalculator.shortCircuitKA,
-
-            breakerRatingA =
-                ElectricalCalculator.breakerRatingA,
-
-            breakerIcuKA =
-                ElectricalCalculator.breakerIcuKA,
-
-            transformerKVA =
-                ElectricalCalculator.transformerKVA,
-
-            generatorKVA =
-                ElectricalCalculator.generatorKVA,
-
-            capacitorKVAR =
-                ElectricalCalculator.capacitorKVAR
-        )
+                designStatus =
+                    "EARTHING CHECK COMPLETE"
+            )
     }
 
     // ============================================================
@@ -580,12 +458,5 @@ object ProjectManager {
             ProjectCalculation()
 
         _loads.clear()
-
-        /*
-         * Temporary legacy cleanup.
-         * Will disappear when ElectricalCalculator
-         * is completely removed.
-         */
-        ElectricalCalculator.reset()
     }
 }
