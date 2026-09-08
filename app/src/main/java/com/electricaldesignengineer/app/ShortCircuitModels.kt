@@ -4,19 +4,14 @@ package com.electricaldesignengineer.app
  * Short-circuit and protection calculation models.
  *
  * IMPORTANT:
- * - No transformer impedance is assumed.
- * - No upstream fault level is assumed.
- * - All source and equipment data must be supplied explicitly.
- *
- * The present model is intended as the data contract for the
- * ProfessionalEngineeringCore. The actual engineering calculation
- * will be performed by the core calculation engine.
+ * No transformer impedance, upstream fault level or conductor
+ * temperature is assumed by the software.
  */
 
 /**
- * Fault type currently supported by the calculation contract.
+ * Fault type supported by the present calculation engine.
  *
- * Additional fault types will be added after their required
+ * More fault types can be added later when their required
  * network parameters are explicitly modeled.
  */
 enum class ShortCircuitFaultType {
@@ -24,22 +19,20 @@ enum class ShortCircuitFaultType {
 }
 
 /**
- * Source information.
- *
- * Either transformer data or an upstream short-circuit level
- * must be supplied.
+ * Source information used by the short-circuit calculation.
  */
 data class ShortCircuitSourceInput(
 
     /**
-     * Transformer apparent power.
+     * Transformer apparent power in kVA.
      *
-     * Required when transformer impedance is used.
+     * Required when transformer impedance is used as the
+     * source impedance.
      */
     val transformerKVA: Double? = null,
 
     /**
-     * Transformer secondary voltage.
+     * Voltage at the calculation bus in volts.
      */
     val voltageV: Double,
 
@@ -47,21 +40,48 @@ data class ShortCircuitSourceInput(
      * Transformer percentage impedance.
      *
      * Example:
-     * 6.0 means 6 %.
-     *
-     * This value is intentionally nullable.
-     * The software must not assume a transformer %Z.
+     * 6.0 = 6 %
      */
     val transformerImpedancePercent: Double? = null,
 
     /**
-     * Upstream prospective short-circuit current in kA.
+     * Transformer/source resistance percentage.
      *
-     * If supplied, it represents the available upstream fault level
-     * at the source bus and can be converted to an equivalent
-     * upstream impedance.
+     * If supplied together with reactance percentage, the
+     * transformer impedance is represented explicitly as R + jX.
      */
-    val upstreamShortCircuitKA: Double? = null
+    val transformerResistancePercent: Double? = null,
+
+    /**
+     * Transformer/source reactance percentage.
+     */
+    val transformerReactancePercent: Double? = null,
+
+    /**
+     * Available upstream short-circuit current at the same
+     * voltage level as voltageV.
+     *
+     * This is NOT silently converted through an unknown
+     * transformer ratio.
+     */
+    val upstreamShortCircuitKA: Double? = null,
+
+    /**
+     * Upstream source resistance in ohms at the calculation
+     * voltage level.
+     *
+     * Optional. When upstreamShortCircuitKA is used without
+     * explicit R/X, the source impedance magnitude can be
+     * calculated, but downstream complex impedance calculation
+     * remains DATA_REQUIRED unless an explicit R/X split is supplied.
+     */
+    val upstreamResistanceOhm: Double? = null,
+
+    /**
+     * Upstream source reactance in ohms at the calculation
+     * voltage level.
+     */
+    val upstreamReactanceOhm: Double? = null
 )
 
 /**
@@ -72,19 +92,17 @@ data class ShortCircuitSourceInput(
 data class ShortCircuitCableInput(
 
     /**
-     * Cable route length.
+     * Cable route length in meters.
      */
     val lengthM: Double,
 
     /**
-     * Resistance at the engineering calculation reference
-     * condition.
+     * Resistance in ohm/km.
      */
     val resistanceOhmPerKm: Double,
 
     /**
-     * Reactance at the engineering calculation reference
-     * condition.
+     * Reactance in ohm/km.
      */
     val reactanceOhmPerKm: Double,
 
@@ -105,32 +123,22 @@ data class ShortCircuitInput(
     val source: ShortCircuitSourceInput,
 
     /**
-     * Optional feeder impedance.
+     * Optional feeder cable.
      *
-     * Null means the calculation is being performed at the
-     * source bus rather than downstream of a feeder.
+     * Null means calculation at the source bus.
      */
     val cable: ShortCircuitCableInput? = null
 )
 
 /**
- * Impedance result used for traceability.
+ * Equivalent impedance used by the calculation.
  */
 data class ShortCircuitImpedance(
 
-    /**
-     * Total equivalent resistance in ohms.
-     */
     val resistanceOhm: Double,
 
-    /**
-     * Total equivalent reactance in ohms.
-     */
     val reactanceOhm: Double,
 
-    /**
-     * Magnitude of total impedance in ohms.
-     */
     val magnitudeOhm: Double
 )
 
@@ -151,9 +159,6 @@ data class ShortCircuitResult(
      */
     val faultCurrentKA: Double,
 
-    /**
-     * Equivalent impedance used by the calculation.
-     */
     val equivalentImpedance: ShortCircuitImpedance?,
 
     val checks: List<EngineeringCheck>,
@@ -162,15 +167,20 @@ data class ShortCircuitResult(
 )
 
 /**
- * Input for a protection-device verification.
+ * Protection verification input.
  *
- * This model intentionally remains independent from a particular
- * manufacturer.
+ * Ib <= In <= Iz
+ *
+ * and
+ *
+ * Icu >= Ik
+ *
+ * are verified explicitly.
  */
 data class ProtectionCheckInput(
 
     /**
-     * Design/load current Ib.
+     * Design current Ib.
      */
     val designCurrentA: Double,
 
@@ -180,22 +190,24 @@ data class ProtectionCheckInput(
     val cableAmpacityA: Double,
 
     /**
-     * Selected protective-device rated current In.
+     * Protective device rated current In.
      */
     val breakerRatedCurrentA: Double,
 
     /**
-     * Prospective short-circuit current at the installation point.
+     * Prospective short-circuit current Ik.
      */
     val prospectiveShortCircuitKA: Double,
 
     /**
-     * Protective device ultimate breaking capacity Icu.
+     * Ultimate breaking capacity Icu.
      */
     val breakerIcuKA: Double,
 
     /**
-     * Optional service breaking capacity Ics.
+     * Service breaking capacity Ics.
+     *
+     * Optional because not every catalog entry may provide it.
      */
     val breakerIcsKA: Double? = null
 )
@@ -211,6 +223,9 @@ data class ProtectionCheckResult(
 
     val breakingCapacityPass: Boolean,
 
+    /**
+     * Null means Ics was not provided.
+     */
     val serviceBreakingCapacityPass: Boolean?,
 
     val checks: List<EngineeringCheck>,
