@@ -1,9 +1,11 @@
 package com.electricaldesignengineer.app
 
+import kotlin.math.sqrt
+
 /**
  * AutoDesignService
  *
- * Orchestrates the automatic electrical distribution design.
+ * Main automatic electrical design orchestrator.
  *
  * Architecture:
  *
@@ -16,17 +18,16 @@ package com.electricaldesignengineer.app
  * EngineeringCatalogRepository
  *
  * IMPORTANT:
- * - This service must NOT use EngineeringDesignEngine.
- * - No transformer impedance is invented.
- * - If source short-circuit data is unavailable, the result is reported
- *   as DATA_REQUIRED instead of using an arbitrary default.
+ * - Does NOT use EngineeringDesignEngine.
+ * - Does NOT invent transformer impedance.
+ * - Cable is selected automatically by the ProfessionalEngineeringCore.
+ * - Engineer can later override the selected cable from the UI.
  */
-
 object AutoDesignService {
 
-    // ------------------------------------------------------------------------
-    // PUBLIC RESULT MODELS
-    // ------------------------------------------------------------------------
+    // ============================================================
+    // RESULT MODELS
+    // ============================================================
 
     data class FeederResult(
         val nodeId: String,
@@ -47,16 +48,16 @@ object AutoDesignService {
     )
 
     data class SystemResult(
-        val system: ElectricalSystem,
+        val system: DistributionSystem,
         val feeders: List<FeederResult>,
         val valid: Boolean,
         val message: String,
         val warnings: List<String> = emptyList()
     )
 
-    // ------------------------------------------------------------------------
-    // PROFESSIONAL DATA PROVIDERS
-    // ------------------------------------------------------------------------
+    // ============================================================
+    // CABLE DATA PROVIDER
+    // ============================================================
 
     private val cableProvider =
         object : ProfessionalEngineeringCore.CableDataProvider {
@@ -75,6 +76,10 @@ object AutoDesignService {
             }
         }
 
+    // ============================================================
+    // BREAKER DATA PROVIDER
+    // ============================================================
+
     private val breakerProvider =
         object : ProfessionalEngineeringCore.BreakerDataProvider {
 
@@ -88,37 +93,34 @@ object AutoDesignService {
             }
         }
 
-    // ------------------------------------------------------------------------
-    // MAIN ENTRY POINT
-    // ------------------------------------------------------------------------
+    // ============================================================
+    // MAIN DESIGN
+    // ============================================================
 
     fun designSystem(
-        system: ElectricalSystem
+        system: DistributionSystem
     ): SystemResult {
 
-        val warnings = mutableListOf<String>()
+        val systemWarnings = mutableListOf<String>()
+        val feederResults = mutableListOf<FeederResult>()
 
         return try {
 
-            // ------------------------------------------------------------
-            // 1. Calculate distribution loads
-            // ------------------------------------------------------------
-
-            DistributionCalculator.calculate(system)
-
-            // ------------------------------------------------------------
-            // 2. Design every feeder
-            // ------------------------------------------------------------
-
-            val feederResults = mutableListOf<FeederResult>()
-
+            /*
+             * Design every node having a feeder.
+             *
+             * Transformer itself is not designed as a feeder.
+             */
             system.nodes
-                .filter { it.type != DistributionNodeType.TRANSFORMER }
+                .filter { node ->
+                    node.type != DistributionNodeType.TRANSFORMER
+                }
                 .forEach { node ->
 
                     val feeder = node.feeder
 
                     if (feeder == null) {
+
                         feederResults += FeederResult(
                             nodeId = node.id,
                             nodeName = node.name,
@@ -133,33 +135,30 @@ object AutoDesignService {
                             shortCircuitCurrentKA = null,
                             protectionPassed = false,
                             valid = false,
-                            message = "DATA_REQUIRED: feeder data is missing"
+                            message =
+                                "DATA_REQUIRED: feeder data is missing."
                         )
 
-                        return@forEach
-                    }
+                    } else {
 
-                    val result = designFeeder(
-                        system = system,
-                        node = node,
-                        feeder = feeder
-                    )
+                        val result =
+                            designFeeder(
+                                system = system,
+                                node = node,
+                                feeder = feeder
+                            )
 
-                    feederResults += result
-
-                    if (result.warnings.isNotEmpty()) {
-                        warnings += result.warnings
+                        feederResults += result
+                        systemWarnings += result.warnings
                     }
                 }
 
-            // ------------------------------------------------------------
-            // 3. Validate final system
-            // ------------------------------------------------------------
+            val valid =
+                feederResults.isNotEmpty() &&
+                        feederResults.all { it.valid }
 
-            val allValid = feederResults.all { it.valid }
-
-            val finalMessage =
-                if (allValid) {
+            val message =
+                if (valid) {
                     "Automatic electrical design completed successfully."
                 } else {
                     "Design completed with one or more engineering issues."
@@ -168,117 +167,208 @@ object AutoDesignService {
             SystemResult(
                 system = system,
                 feeders = feederResults,
-                valid = allValid,
-                message = finalMessage,
-                warnings = warnings.distinct()
+                valid = valid,
+                message = message,
+                warnings = systemWarnings.distinct()
             )
 
-        } catch (ex: Exception) {
+        } catch (exception: Exception) {
 
             SystemResult(
                 system = system,
-                feeders = emptyList(),
+                feeders = feederResults,
                 valid = false,
-                message = "DESIGN_ERROR: ${ex.message ?: "Unknown engineering calculation error"}",
-                warnings = listOf(
-                    "Automatic design could not be completed."
-                )
+                message =
+                    "DESIGN_ERROR: ${
+                        exception.message
+                            ?: "Unknown engineering calculation error."
+                    }",
+                warnings =
+                    systemWarnings
+                        .plus("Automatic design calculation failed.")
+                        .distinct()
             )
         }
     }
 
-    // ------------------------------------------------------------------------
+    // ============================================================
     // FEEDER DESIGN
-    // ------------------------------------------------------------------------
+    // ============================================================
 
     private fun designFeeder(
-        system: ElectricalSystem,
+        system: DistributionSystem,
         node: DistributionNode,
         feeder: FeederDesign
     ): FeederResult {
 
         val warnings = mutableListOf<String>()
 
-        // ------------------------------------------------------------
-        // 1. Design current
-        // ------------------------------------------------------------
+        // --------------------------------------------------------
+        // 1. Calculate design current
+        // --------------------------------------------------------
 
-        val designCurrent = calculateDesignCurrent(
-            node = node,
-            feeder = feeder
-        )
+        val designCurrent =
+            calculateDesignCurrent(
+                node = node,
+                feeder = feeder
+            )
 
         if (designCurrent <= 0.0) {
+
             return emptyResult(
                 node = node,
-                message = "DATA_REQUIRED: valid design current is required"
+                message =
+                    "DATA_REQUIRED: valid design current is required."
             )
         }
 
         feeder.designCurrentIb = designCurrent
 
-        // ------------------------------------------------------------
-        // 2. Basic input validation
-        // ------------------------------------------------------------
+        // --------------------------------------------------------
+        // 2. Validate feeder length
+        // --------------------------------------------------------
 
         if (feeder.lengthMeters <= 0.0) {
+
             return emptyResult(
                 node = node,
                 designCurrent = designCurrent,
-                message = "DATA_REQUIRED: feeder length must be greater than zero"
+                message =
+                    "DATA_REQUIRED: feeder length must be greater than zero."
             )
         }
+
+        // --------------------------------------------------------
+        // 3. Validate voltage
+        // --------------------------------------------------------
 
         if (node.voltage <= 0.0) {
+
             return emptyResult(
                 node = node,
                 designCurrent = designCurrent,
-                message = "DATA_REQUIRED: system voltage is required"
+                message =
+                    "DATA_REQUIRED: system voltage is required."
             )
         }
 
-        if (feeder.parallelRuns < 1) {
-            feeder.parallelRuns = 1
-        }
-
-        // ------------------------------------------------------------
-        // 3. Cable design through ProfessionalEngineeringCore
-        // ------------------------------------------------------------
+        // --------------------------------------------------------
+        // 4. Determine phase system
+        // --------------------------------------------------------
 
         val phaseSystem =
             when (node.phaseType) {
-                PhaseType.SINGLE_PHASE ->
+
+                PhaseType.SINGLE_PHASE_L1,
+                PhaseType.SINGLE_PHASE_L2,
+                PhaseType.SINGLE_PHASE_L3 ->
                     ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
 
-                else ->
+                PhaseType.THREE_PHASE ->
                     ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
             }
 
+        // --------------------------------------------------------
+        // 5. Number of loaded conductors
+        // --------------------------------------------------------
+
+        val loadedConductors =
+            when (phaseSystem) {
+
+                ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE ->
+                    3
+
+                ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE ->
+                    2
+            }
+
+        // --------------------------------------------------------
+        // 6. Power factor
+        // --------------------------------------------------------
+
+        val powerFactor =
+            determinePowerFactor(node)
+
+        // --------------------------------------------------------
+        // 7. Correction factor
+        // --------------------------------------------------------
+
+        val correctionFactor =
+            feeder.correctionFactorTotal
+                .coerceIn(0.0001, 1.0)
+
+        // --------------------------------------------------------
+        // 8. Maximum parallel runs
+        // --------------------------------------------------------
+
+        val maximumParallelRuns =
+            when {
+                feeder.parallelRuns > 1 ->
+                    feeder.parallelRuns.coerceIn(1, 8)
+
+                else ->
+                    8
+            }
+
+        // --------------------------------------------------------
+        // 9. Cable design input
+        // --------------------------------------------------------
+
         val cableInput =
             ProfessionalEngineeringCore.CableDesignInput(
-                currentA = designCurrent,
-                lengthM = feeder.lengthMeters,
-                voltageV = node.voltage,
-                powerFactor = determinePowerFactor(node),
-                phaseSystem = phaseSystem,
-                installationMethod = feeder.installationMethod,
-                material = feeder.cableMaterial,
-                insulation = feeder.insulation,
-                groupingFactor = safeCorrectionFactor(feeder.correctionFactorTotal),
-                thermalInsulationFactor = 1.0,
-                soilCorrectionFactor = 1.0,
-                ambientTemperatureC = 30.0,
+
+                designCurrentA = designCurrent,
+
+                lengthM =
+                    feeder.lengthMeters,
+
+                voltageV =
+                    node.voltage,
+
+                powerFactor =
+                    powerFactor,
+
+                phaseSystem =
+                    phaseSystem,
+
+                conductorMaterial =
+                    feeder.cableMaterial,
+
+                insulation =
+                    feeder.insulation,
+
+                installationMethod =
+                    feeder.installationMethod,
+
+                numberOfLoadedConductors =
+                    loadedConductors,
+
+                ambientTemperatureC =
+                    30.0,
+
+                groupingFactor =
+                    correctionFactor,
+
+                thermalInsulationFactor =
+                    1.0,
+
+                soilCorrectionFactor =
+                    1.0,
+
                 maximumVoltageDropPercent =
-                    if (feeder.maximumVoltageDropPercent > 0.0)
+                    if (feeder.maximumVoltageDropPercent > 0.0) {
                         feeder.maximumVoltageDropPercent
-                    else
-                        5.0,
+                    } else {
+                        5.0
+                    },
+
                 maximumParallelRuns =
-                    if (feeder.parallelRuns > 1)
-                        feeder.parallelRuns
-                    else
-                        10
+                    maximumParallelRuns
             )
+
+        // --------------------------------------------------------
+        // 10. Automatic cable selection
+        // --------------------------------------------------------
 
         val cableResult =
             ProfessionalEngineeringCore.designCable(
@@ -286,95 +376,154 @@ object AutoDesignService {
                 provider = cableProvider
             )
 
-        if (!cableResult.success) {
+        val selectedCable =
+            cableResult.selectedCable
+
+        if (
+            cableResult.status !=
+            EngineeringStatus.PASS ||
+            selectedCable == null
+        ) {
 
             return FeederResult(
                 nodeId = node.id,
                 nodeName = node.name,
                 designCurrentA = designCurrent,
                 cableSizeMm2 = null,
-                parallelRuns = feeder.parallelRuns,
-                ampacityIzA = null,
-                voltageDropPercent = null,
+                parallelRuns = cableResult.parallelRuns,
+                ampacityIzA =
+                    if (cableResult.totalAmpacityA > 0.0) {
+                        cableResult.totalAmpacityA
+                    } else {
+                        null
+                    },
+                voltageDropPercent =
+                    if (cableResult.voltageDropPercent > 0.0) {
+                        cableResult.voltageDropPercent
+                    } else {
+                        null
+                    },
                 breakerRatingA = null,
                 breakerIcuKA = null,
                 breakerIcsKA = null,
                 shortCircuitCurrentKA = null,
                 protectionPassed = false,
                 valid = false,
-                message = cableResult.message,
-                warnings = cableResult.warnings
+                message =
+                    cableStatusMessage(cableResult.status),
+                warnings =
+                    cableResult.trace.warnings
             )
         }
 
-        // ------------------------------------------------------------
-        // 4. Store selected cable
-        // ------------------------------------------------------------
+        // --------------------------------------------------------
+        // 11. Store automatically selected cable
+        // --------------------------------------------------------
 
-        feeder.conductorSizeMm2 = cableResult.cableSizeMm2
-        feeder.ampacityIz = cableResult.ampacityA
-        feeder.parallelRuns = cableResult.parallelRuns
-        feeder.voltageDropPercent = cableResult.voltageDropPercent
-        feeder.cableSelectedAutomatically = true
+        feeder.conductorSizeMm2 =
+            selectedCable.sizeMm2
 
-        // ------------------------------------------------------------
-        // 5. Short circuit calculation
-        // ------------------------------------------------------------
+        feeder.ampacityIz =
+            cableResult.totalAmpacityA
 
-        val shortCircuitResult =
-            calculateShortCircuit(
-                system = system,
-                node = node,
-                feeder = feeder,
-                phaseSystem = phaseSystem,
-                warnings = warnings
-            )
+        feeder.parallelRuns =
+            cableResult.parallelRuns
+
+        feeder.voltageDropPercent =
+            cableResult.voltageDropPercent
+
+        feeder.cableSelectedAutomatically =
+            true
+
+        // --------------------------------------------------------
+        // 12. Short-circuit source
+        // --------------------------------------------------------
+        //
+        // Current DistributionModel does not yet contain transformer
+        // impedance/source impedance fields.
+        //
+        // Therefore:
+        // - use explicitly supplied feeder.shortCircuitCurrentKA
+        //   if it is greater than zero.
+        // - otherwise do NOT invent a transformer %Z.
+        //
 
         val shortCircuitKA =
-            shortCircuitResult.first
+            if (feeder.shortCircuitCurrentKA > 0.0) {
 
-        val shortCircuitAvailable =
-            shortCircuitResult.second
+                feeder.shortCircuitCurrentKA
 
-        if (!shortCircuitAvailable) {
+            } else {
 
-            return FeederResult(
-                nodeId = node.id,
-                nodeName = node.name,
-                designCurrentA = designCurrent,
-                cableSizeMm2 = feeder.conductorSizeMm2,
-                parallelRuns = feeder.parallelRuns,
-                ampacityIzA = feeder.ampacityIz,
-                voltageDropPercent = feeder.voltageDropPercent,
-                breakerRatingA = null,
-                breakerIcuKA = null,
-                breakerIcsKA = null,
-                shortCircuitCurrentKA = null,
-                protectionPassed = false,
-                valid = false,
-                message = "DATA_REQUIRED: upstream short-circuit/source impedance data is required.",
-                warnings = warnings.distinct()
-            )
-        }
+                warnings +=
+                    "Short-circuit source data is not available. " +
+                            "Transformer/source impedance must be entered."
 
-        feeder.shortCircuitCurrentKA = shortCircuitKA
+                return FeederResult(
+                    nodeId = node.id,
+                    nodeName = node.name,
+                    designCurrentA = designCurrent,
+                    cableSizeMm2 =
+                        feeder.conductorSizeMm2,
+                    parallelRuns =
+                        feeder.parallelRuns,
+                    ampacityIzA =
+                        feeder.ampacityIz,
+                    voltageDropPercent =
+                        feeder.voltageDropPercent,
+                    breakerRatingA = null,
+                    breakerIcuKA = null,
+                    breakerIcsKA = null,
+                    shortCircuitCurrentKA = null,
+                    protectionPassed = false,
+                    valid = false,
+                    message =
+                        "DATA_REQUIRED: upstream short-circuit current " +
+                                "or transformer/source impedance is required.",
+                    warnings =
+                        warnings.distinct()
+                )
+            }
 
-        // ------------------------------------------------------------
-        // 6. Breaker selection
-        // ------------------------------------------------------------
+        // --------------------------------------------------------
+        // 13. Store short-circuit current
+        // --------------------------------------------------------
+
+        feeder.shortCircuitCurrentKA =
+            shortCircuitKA
+
+        // --------------------------------------------------------
+        // 14. Breaker poles
+        // --------------------------------------------------------
 
         val requiredPoles =
-            if (phaseSystem == ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE) {
-                4
-            } else {
-                2
+            when (phaseSystem) {
+
+                ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE ->
+                    4
+
+                ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE ->
+                    2
             }
+
+        // --------------------------------------------------------
+        // 15. Breaker design
+        // --------------------------------------------------------
 
         val breakerInput =
             ProfessionalEngineeringCore.BreakerDesignInput(
-                loadCurrentA = designCurrent,
-                shortCircuitCurrentKA = shortCircuitKA,
-                requiredPoles = requiredPoles
+
+                designCurrentA =
+                    designCurrent,
+
+                cableAmpacityA =
+                    feeder.ampacityIz,
+
+                prospectiveShortCircuitKA =
+                    shortCircuitKA,
+
+                requiredPoles =
+                    requiredPoles
             )
 
         val breakerResult =
@@ -383,255 +532,348 @@ object AutoDesignService {
                 provider = breakerProvider
             )
 
-        if (!breakerResult.success) {
+        val selectedBreaker =
+            breakerResult.selectedBreaker
+
+        if (
+            breakerResult.status !=
+            EngineeringStatus.PASS ||
+            selectedBreaker == null
+        ) {
 
             return FeederResult(
                 nodeId = node.id,
                 nodeName = node.name,
                 designCurrentA = designCurrent,
-                cableSizeMm2 = feeder.conductorSizeMm2,
-                parallelRuns = feeder.parallelRuns,
-                ampacityIzA = feeder.ampacityIz,
-                voltageDropPercent = feeder.voltageDropPercent,
+                cableSizeMm2 =
+                    feeder.conductorSizeMm2,
+                parallelRuns =
+                    feeder.parallelRuns,
+                ampacityIzA =
+                    feeder.ampacityIz,
+                voltageDropPercent =
+                    feeder.voltageDropPercent,
                 breakerRatingA = null,
                 breakerIcuKA = null,
                 breakerIcsKA = null,
-                shortCircuitCurrentKA = shortCircuitKA,
+                shortCircuitCurrentKA =
+                    shortCircuitKA,
                 protectionPassed = false,
                 valid = false,
-                message = breakerResult.message,
-                warnings = warnings + breakerResult.warnings
+                message =
+                    breakerStatusMessage(
+                        breakerResult.status
+                    ),
+                warnings =
+                    warnings +
+                            breakerResult.trace.warnings
             )
         }
 
-        // ------------------------------------------------------------
-        // 7. Store breaker
-        // ------------------------------------------------------------
+        // --------------------------------------------------------
+        // 16. Store breaker
+        // --------------------------------------------------------
 
-        feeder.breakerRatingIn = breakerResult.breaker.ratingA
-        feeder.breakerIcuKA = breakerResult.breaker.icuKA
-        feeder.breakerIcsKA = breakerResult.breaker.icsKA
-        feeder.breakerSelectedAutomatically = true
+        feeder.breakerRatingIn =
+            selectedBreaker.ratedCurrentA
 
-        // ------------------------------------------------------------
-        // 8. Protection coordination/basic protection check
-        // ------------------------------------------------------------
+        feeder.breakerIcuKA =
+            selectedBreaker.icuKA
 
-        val protectionInput =
-            ProfessionalEngineeringCore.ProtectionCheckInput(
-                designCurrentIb = designCurrent,
-                breakerRatingIn = feeder.breakerRatingIn,
-                cableAmpacityIz = feeder.ampacityIz,
-                shortCircuitCurrentKA = shortCircuitKA,
-                breakerIcuKA = feeder.breakerIcuKA,
-                breakerIcsKA = feeder.breakerIcsKA
+        feeder.breakerIcsKA =
+            selectedBreaker.icsKA ?: 0.0
+
+        feeder.breakerSelectedAutomatically =
+            true
+
+        // --------------------------------------------------------
+        // 17. Protection checks
+        // --------------------------------------------------------
+
+        val protectionChecks =
+            evaluateProtection(
+                designCurrentA =
+                    designCurrent,
+                cableAmpacityA =
+                    feeder.ampacityIz,
+                breakerRatingA =
+                    feeder.breakerRatingIn,
+                shortCircuitKA =
+                    shortCircuitKA,
+                breakerIcuKA =
+                    feeder.breakerIcuKA,
+                breakerIcsKA =
+                    feeder.breakerIcsKA
             )
 
-        val protectionResult =
-            ProfessionalEngineeringCore.checkProtection(
-                input = protectionInput
-            )
+        // --------------------------------------------------------
+        // 18. Voltage-drop check
+        // --------------------------------------------------------
 
-        val finalWarnings =
-            warnings +
-                    cableResult.warnings +
-                    breakerResult.warnings +
-                    protectionResult.warnings
+        val voltageDropPassed =
+            feeder.voltageDropPercent <=
+                    feeder.maximumVoltageDropPercent
+
+        if (!voltageDropPassed) {
+
+            warnings +=
+                "Voltage drop exceeds the specified maximum."
+        }
+
+        // --------------------------------------------------------
+        // 19. Final validity
+        // --------------------------------------------------------
 
         val valid =
-            protectionResult.passed &&
-                    feeder.voltageDropPercent <=
-                    feeder.maximumVoltageDropPercent
+            protectionChecks.first &&
+                    voltageDropPassed
 
         val finalMessage =
             when {
-                !protectionResult.passed ->
-                    protectionResult.message
 
-                feeder.voltageDropPercent >
-                        feeder.maximumVoltageDropPercent ->
+                !protectionChecks.first ->
+                    "FAIL: protection requirements are not satisfied."
+
+                !voltageDropPassed ->
                     "FAIL: voltage drop exceeds the specified maximum."
 
                 else ->
-                    "PASS: feeder cable and breaker design completed."
+                    "PASS: automatic cable and breaker selection completed."
             }
 
+        // --------------------------------------------------------
+        // 20. Final result
+        // --------------------------------------------------------
+
         return FeederResult(
-            nodeId = node.id,
-            nodeName = node.name,
-            designCurrentA = designCurrent,
-            cableSizeMm2 = feeder.conductorSizeMm2,
-            parallelRuns = feeder.parallelRuns,
-            ampacityIzA = feeder.ampacityIz,
-            voltageDropPercent = feeder.voltageDropPercent,
-            breakerRatingA = feeder.breakerRatingIn,
-            breakerIcuKA = feeder.breakerIcuKA,
-            breakerIcsKA = feeder.breakerIcsKA,
-            shortCircuitCurrentKA = shortCircuitKA,
-            protectionPassed = protectionResult.passed,
-            valid = valid,
-            message = finalMessage,
-            warnings = finalWarnings.distinct()
+
+            nodeId =
+                node.id,
+
+            nodeName =
+                node.name,
+
+            designCurrentA =
+                designCurrent,
+
+            cableSizeMm2 =
+                feeder.conductorSizeMm2,
+
+            parallelRuns =
+                feeder.parallelRuns,
+
+            ampacityIzA =
+                feeder.ampacityIz,
+
+            voltageDropPercent =
+                feeder.voltageDropPercent,
+
+            breakerRatingA =
+                feeder.breakerRatingIn,
+
+            breakerIcuKA =
+                feeder.breakerIcuKA,
+
+            breakerIcsKA =
+                feeder.breakerIcsKA,
+
+            shortCircuitCurrentKA =
+                shortCircuitKA,
+
+            protectionPassed =
+                protectionChecks.first,
+
+            valid =
+                valid,
+
+            message =
+                finalMessage,
+
+            warnings =
+                (
+                    warnings +
+                            protectionChecks.second
+                    )
+                    .distinct()
         )
     }
 
-    // ------------------------------------------------------------------------
+    // ============================================================
     // DESIGN CURRENT
-    // ------------------------------------------------------------------------
+    // ============================================================
 
     private fun calculateDesignCurrent(
         node: DistributionNode,
         feeder: FeederDesign
     ): Double {
 
-        // If a valid design current was already calculated by the distribution
-        // calculator, use it.
+        /*
+         * Keep an already calculated value if it exists.
+         */
         if (feeder.designCurrentIb > 0.0) {
             return feeder.designCurrentIb
         }
 
-        // Otherwise calculate from the node loads.
-        val totalLoad =
-            node.loads.sumOf { load ->
+        /*
+         * Calculate directly from the node demand loads.
+         *
+         * This uses the actual DistributionLoad model:
+         *
+         * quantity
+         * unitKW
+         * demandFactor
+         * powerFactor
+         */
 
-                when {
-                    load.designCurrentA > 0.0 ->
-                        load.designCurrentA
-
-                    load.powerKW > 0.0 ->
-                        calculateCurrentFromPower(
-                            powerKW = load.powerKW,
-                            voltage = node.voltage,
-                            powerFactor = load.powerFactor,
-                            phaseType = node.phaseType
-                        )
-
-                    else ->
-                        0.0
-                }
+        val demandKVA =
+            node.loads.sumOf {
+                it.demandKVA()
             }
 
-        return totalLoad
-    }
-
-    private fun calculateCurrentFromPower(
-        powerKW: Double,
-        voltage: Double,
-        powerFactor: Double,
-        phaseType: PhaseType
-    ): Double {
-
-        if (powerKW <= 0.0 || voltage <= 0.0) {
+        if (demandKVA <= 0.0) {
             return 0.0
         }
 
-        val pf =
-            powerFactor
-                .coerceIn(0.1, 1.0)
+        val effectivePowerFactor =
+            determinePowerFactor(node)
 
-        return when (phaseType) {
+        return when (node.phaseType) {
 
-            PhaseType.SINGLE_PHASE ->
-                powerKW * 1000.0 /
-                        (voltage * pf)
+            PhaseType.THREE_PHASE -> {
 
-            else ->
-                powerKW * 1000.0 /
-                        (kotlin.math.sqrt(3.0) * voltage * pf)
+                demandKVA * 1000.0 /
+                        (
+                            sqrt(3.0) *
+                                    node.voltage *
+                                    effectivePowerFactor
+                            )
+            }
+
+            PhaseType.SINGLE_PHASE_L1,
+            PhaseType.SINGLE_PHASE_L2,
+            PhaseType.SINGLE_PHASE_L3 -> {
+
+                demandKVA * 1000.0 /
+                        (
+                            node.voltage *
+                                    effectivePowerFactor
+                            )
+            }
         }
     }
 
-    // ------------------------------------------------------------------------
+    // ============================================================
     // POWER FACTOR
-    // ------------------------------------------------------------------------
+    // ============================================================
 
     private fun determinePowerFactor(
         node: DistributionNode
     ): Double {
 
-        val values =
-            node.loads
-                .map { it.powerFactor }
-                .filter { it > 0.0 }
-
-        if (values.isEmpty()) {
-            return 0.9
-        }
-
-        return values.average()
-            .coerceIn(0.1, 1.0)
-    }
-
-    // ------------------------------------------------------------------------
-    // SHORT CIRCUIT
-    // ------------------------------------------------------------------------
-
-    private fun calculateShortCircuit(
-        system: ElectricalSystem,
-        node: DistributionNode,
-        feeder: FeederDesign,
-        phaseSystem: ProfessionalEngineeringCore.PhaseSystem,
-        warnings: MutableList<String>
-    ): Pair<Double, Boolean> {
-
-        /*
-         * Professional rule:
-         *
-         * NEVER invent transformer %Z.
-         *
-         * The ProfessionalEngineeringCore requires real source information.
-         *
-         * If the project model does not yet contain transformer impedance or
-         * upstream fault level, we must return DATA_REQUIRED.
-         */
-
-        val transformer =
-            system.nodes.firstOrNull {
-                it.type == DistributionNodeType.TRANSFORMER
+        val weightedPower =
+            node.loads.sumOf {
+                it.demandKW()
             }
 
-        if (transformer == null) {
+        if (weightedPower <= 0.0) {
+
+            return node.loads
+                .map { it.powerFactor }
+                .filter { it > 0.0 }
+                .average()
+                .takeIf { !it.isNaN() }
+                ?.coerceIn(0.1, 1.0)
+                ?: 0.9
+        }
+
+        val weightedPF =
+            node.loads.sumOf { load ->
+
+                load.demandKW() *
+                        load.powerFactor
+            } / weightedPower
+
+        return weightedPF.coerceIn(
+            0.1,
+            1.0
+        )
+    }
+
+    // ============================================================
+    // PROTECTION CHECKS
+    // ============================================================
+
+    private fun evaluateProtection(
+        designCurrentA: Double,
+        cableAmpacityA: Double,
+        breakerRatingA: Double,
+        shortCircuitKA: Double,
+        breakerIcuKA: Double,
+        breakerIcsKA: Double
+    ): Pair<Boolean, List<String>> {
+
+        val warnings =
+            mutableListOf<String>()
+
+        /*
+         * Ib <= In <= Iz
+         */
+
+        val currentCoordinationPassed =
+            designCurrentA <=
+                    breakerRatingA &&
+                    breakerRatingA <=
+                    cableAmpacityA
+
+        if (!currentCoordinationPassed) {
 
             warnings +=
-                "Short-circuit calculation requires an upstream transformer/source."
-
-            return 0.0 to false
+                "Protection coordination failed: " +
+                        "Ib <= In <= Iz is not satisfied."
         }
 
         /*
-         * The current DistributionNode model does not expose transformer
-         * R%, X%, %Z or upstream fault level.
-         *
-         * Therefore we intentionally do not fabricate these values.
-         *
-         * The correct next model extension is to add source data to the
-         * transformer node and then pass it to ProfessionalEngineeringCore.
+         * Breaking capacity must be >= prospective fault current.
          */
 
-        warnings +=
-            "Transformer short-circuit/source impedance data is not defined in the current distribution model."
+        val breakingCapacityPassed =
+            breakerIcuKA >= shortCircuitKA
 
-        return 0.0 to false
-    }
+        if (!breakingCapacityPassed) {
 
-    // ------------------------------------------------------------------------
-    // CORRECTION FACTOR
-    // ------------------------------------------------------------------------
-
-    private fun safeCorrectionFactor(
-        value: Double
-    ): Double {
-
-        return if (value > 0.0) {
-            value.coerceAtMost(1.0)
-        } else {
-            1.0
+            warnings +=
+                "Breaker Icu is lower than the prospective short-circuit current."
         }
+
+        /*
+         * If Ics is provided, verify it as well.
+         */
+        val serviceBreakingCapacityPassed =
+            if (breakerIcsKA > 0.0) {
+
+                breakerIcsKA >= shortCircuitKA
+
+            } else {
+
+                true
+            }
+
+        if (!serviceBreakingCapacityPassed) {
+
+            warnings +=
+                "Breaker Ics is lower than the prospective short-circuit current."
+        }
+
+        return (
+                currentCoordinationPassed &&
+                        breakingCapacityPassed &&
+                        serviceBreakingCapacityPassed
+                ) to warnings
     }
 
-    // ------------------------------------------------------------------------
+    // ============================================================
     // EMPTY RESULT
-    // ------------------------------------------------------------------------
+    // ============================================================
 
     private fun emptyResult(
         node: DistributionNode,
@@ -640,74 +882,92 @@ object AutoDesignService {
     ): FeederResult {
 
         return FeederResult(
-            nodeId = node.id,
-            nodeName = node.name,
-            designCurrentA = designCurrent,
-            cableSizeMm2 = null,
-            parallelRuns = 0,
-            ampacityIzA = null,
-            voltageDropPercent = null,
-            breakerRatingA = null,
-            breakerIcuKA = null,
-            breakerIcsKA = null,
-            shortCircuitCurrentKA = null,
-            protectionPassed = false,
-            valid = false,
-            message = message
+
+            nodeId =
+                node.id,
+
+            nodeName =
+                node.name,
+
+            designCurrentA =
+                designCurrent,
+
+            cableSizeMm2 =
+                null,
+
+            parallelRuns =
+                0,
+
+            ampacityIzA =
+                null,
+
+            voltageDropPercent =
+                null,
+
+            breakerRatingA =
+                null,
+
+            breakerIcuKA =
+                null,
+
+            breakerIcsKA =
+                null,
+
+            shortCircuitCurrentKA =
+                null,
+
+            protectionPassed =
+                false,
+
+            valid =
+                false,
+
+            message =
+                message
         )
     }
 
-    // ------------------------------------------------------------------------
-    // DISPLAY HELPERS
-    // ------------------------------------------------------------------------
+    // ============================================================
+    // STATUS MESSAGES
+    // ============================================================
 
-    fun formatCableSize(
-        sizeMm2: Double?
+    private fun cableStatusMessage(
+        status: EngineeringStatus
     ): String {
 
-        if (sizeMm2 == null) {
-            return "-"
-        }
+        return when (status) {
 
-        return if (sizeMm2 % 1.0 == 0.0) {
-            "${sizeMm2.toInt()} mm²"
-        } else {
-            "${sizeMm2} mm²"
+            EngineeringStatus.PASS ->
+                "PASS: cable selected successfully."
+
+            EngineeringStatus.FAIL ->
+                "FAIL: no cable configuration satisfies the specified design constraints."
+
+            EngineeringStatus.DATA_REQUIRED ->
+                "DATA_REQUIRED: verified cable engineering data is required."
+
+            else ->
+                "Cable design requires review."
         }
     }
 
-    fun formatCurrent(
-        currentA: Double?
+    private fun breakerStatusMessage(
+        status: EngineeringStatus
     ): String {
 
-        if (currentA == null) {
-            return "-"
+        return when (status) {
+
+            EngineeringStatus.PASS ->
+                "PASS: breaker selected successfully."
+
+            EngineeringStatus.FAIL ->
+                "FAIL: no breaker satisfies the specified design requirements."
+
+            EngineeringStatus.DATA_REQUIRED ->
+                "DATA_REQUIRED: verified breaker engineering data is required."
+
+            else ->
+                "Breaker design requires review."
         }
-
-        return "%.1f A".format(currentA)
-    }
-
-    fun formatVoltageDrop(
-        voltageDropPercent: Double?
-    ): String {
-
-        if (voltageDropPercent == null) {
-            return "-"
-        }
-
-        return "%.2f %%".format(voltageDropPercent)
-    }
-
-    fun formatShortCircuit(
-        shortCircuitKA: Double?
-    ): String {
-
-        if (shortCircuitKA == null) {
-            return "-"
-        }
-
-        return "%.2f kA".format(shortCircuitKA)
     }
 }
-
-مهم: هذا الملف متعمد ألا يستخدم "EngineeringDesignEngine" نهائيًا، وألا يفترض "%Z = 6%" للمحول. بعد وضعه، الخطوة التالية هي تعديل "ProfessionalEngineeringCore.kt" لإضافة اختيار الكابل اليدوي، ثم تعديل "DistributionModel.kt" لإضافة بيانات المحول (%Z أو R/X أو Ik)، وبعدها نحذف "EngineeringDesignEngine.kt" نهائيًا.
