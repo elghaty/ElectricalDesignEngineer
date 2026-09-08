@@ -29,24 +29,27 @@ import androidx.compose.ui.unit.dp
 fun BreakerSelectionScreen(
     onBack: () -> Unit = {}
 ) {
+
     val project = ProjectManager.calculation
 
     val requiredPoles =
         if (project.isThreePhase) 4 else 2
 
-    var current by remember {
+    var designCurrentText by remember {
         mutableStateOf(
             if (project.designCurrentA > 0.0)
                 "%.2f".format(project.designCurrentA)
-            else ""
+            else
+                ""
         )
     }
 
-    var faultCurrent by remember {
+    var shortCircuitText by remember {
         mutableStateOf(
             if (project.shortCircuitKA > 0.0)
-                "%.2f".format(project.shortCircuitKA)
-            else ""
+                "%.3f".format(project.shortCircuitKA)
+            else
+                ""
         )
     }
 
@@ -54,48 +57,58 @@ fun BreakerSelectionScreen(
         mutableStateOf<ProfessionalEngineeringCore.BreakerData?>(null)
     }
 
-    var showBreakerMenu by remember {
-        mutableStateOf(false)
+    var resultText by remember {
+        mutableStateOf("")
     }
 
-    var result by remember {
-        mutableStateOf("")
+    var showBreakerMenu by remember {
+        mutableStateOf(false)
     }
 
     val availableBreakers =
         remember(requiredPoles) {
             EngineeringCatalogRepository
                 .getBreakerData(requiredPoles)
+                .sortedBy {
+                    it.ratedCurrentA
+                }
         }
 
-    fun runBreakerDesign(
+    fun checkBreaker(
         breaker:
             ProfessionalEngineeringCore.BreakerData? = null
     ) {
+
         val ib =
-            current.toDoubleOrNull() ?: 0.0
+            designCurrentText
+                .toDoubleOrNull()
+                ?: 0.0
 
         val icc =
-            faultCurrent.toDoubleOrNull() ?: 0.0
+            shortCircuitText
+                .toDoubleOrNull()
+                ?: 0.0
 
         val iz =
-            ProjectManager.calculation.cableAmpacityA
+            ProjectManager
+                .calculation
+                .cableAmpacityA
 
         if (ib <= 0.0) {
-            result =
-                "Please enter a valid Design Current."
+            resultText =
+                "DATA REQUIRED\n\nValid Design Current Ib is required."
             return
         }
 
         if (icc <= 0.0) {
-            result =
-                "Please enter a valid Short Circuit Current."
+            resultText =
+                "DATA REQUIRED\n\nValid Short Circuit Current Icc is required.\n\nCalculate Short Circuit first."
             return
         }
 
         if (iz <= 0.0) {
-            result =
-                "Please select and calculate the cable first."
+            resultText =
+                "DATA REQUIRED\n\nVerified cable ampacity Iz is required.\n\nCalculate Cable Selection first."
             return
         }
 
@@ -105,7 +118,8 @@ fun BreakerSelectionScreen(
 
                 override fun availableBreakers(
                     requiredPoles: Int
-                ): List<ProfessionalEngineeringCore.BreakerData> {
+                ):
+                    List<ProfessionalEngineeringCore.BreakerData> {
 
                     return if (breaker == null) {
                         EngineeringCatalogRepository
@@ -116,8 +130,9 @@ fun BreakerSelectionScreen(
                 }
             }
 
-        val design =
+        val calculation =
             ProfessionalEngineeringCore.designBreaker(
+
                 input =
                     ProfessionalEngineeringCore.BreakerDesignInput(
                         designCurrentA = ib,
@@ -125,28 +140,33 @@ fun BreakerSelectionScreen(
                         prospectiveShortCircuitKA = icc,
                         requiredPoles = requiredPoles
                     ),
+
                 provider = provider
             )
 
         val selected =
-            design.selectedBreaker
+            calculation.selectedBreaker
 
         if (
-            design.status ==
+            calculation.status ==
             EngineeringStatus.PASS &&
             selected != null
         ) {
-            selectedBreaker = selected
+
+            selectedBreaker =
+                selected
 
             ProjectManager.setBreaker(
+
                 breakerRatingA =
                     selected.ratedCurrentA.toInt(),
+
                 breakerIcuKA =
                     selected.icuKA
             )
         }
 
-        result =
+        resultText =
             buildString {
 
                 appendLine(
@@ -157,6 +177,7 @@ fun BreakerSelectionScreen(
                 )
 
                 appendLine()
+
                 appendLine(
                     "Required Poles: $requiredPoles"
                 )
@@ -172,7 +193,7 @@ fun BreakerSelectionScreen(
                 )
 
                 appendLine(
-                    "Short Circuit Icc: %.2f kA"
+                    "Short Circuit Icc: %.3f kA"
                         .format(icc)
                 )
 
@@ -181,24 +202,29 @@ fun BreakerSelectionScreen(
                 if (selected != null) {
 
                     appendLine(
-                        "Selected Breaker:"
+                        "SELECTED BREAKER"
                     )
+
+                    appendLine()
 
                     appendLine(
                         "Manufacturer: ${
-                            selected.manufacturerId ?: "N/A"
+                            selected.manufacturerId
+                                ?: "N/A"
                         }"
                     )
 
                     appendLine(
                         "Product Family: ${
-                            selected.productFamily ?: "N/A"
+                            selected.productFamily
+                                ?: "N/A"
                         }"
                     )
 
                     appendLine(
                         "Part Number: ${
-                            selected.partNumber ?: "N/A"
+                            selected.partNumber
+                                ?: "N/A"
                         }"
                     )
 
@@ -217,11 +243,14 @@ fun BreakerSelectionScreen(
                     )
 
                     selected.icsKA?.let {
+
                         appendLine(
                             "Ics: %.1f kA"
                                 .format(it)
                         )
                     }
+
+                    appendLine()
 
                     appendLine(
                         "Source: ${selected.source}"
@@ -230,33 +259,42 @@ fun BreakerSelectionScreen(
                     appendLine(
                         "Revision: ${selected.revision}"
                     )
+
                 } else {
+
                     appendLine(
-                        "No suitable breaker found."
+                        "NO SUITABLE BREAKER FOUND"
                     )
                 }
 
                 appendLine()
+
                 appendLine(
-                    "FINAL STATUS: ${design.status}"
+                    "FINAL STATUS: ${
+                        calculation.status
+                    }"
                 )
 
-                design.checks.forEach { check ->
+                calculation.checks
+                    .forEach { check ->
 
-                    appendLine()
+                        appendLine()
 
-                    appendLine(
-                        "${check.name}: ${check.status}"
-                    )
+                        appendLine(
+                            "${check.name}: ${
+                                check.status
+                            }"
+                        )
 
-                    appendLine(
-                        check.message
-                    )
-                }
+                        appendLine(
+                            check.message
+                        )
+                    }
             }
     }
 
     Column(
+
         modifier =
             Modifier
                 .fillMaxSize()
@@ -264,8 +302,10 @@ fun BreakerSelectionScreen(
                     rememberScrollState()
                 )
                 .padding(16.dp),
+
         verticalArrangement =
             Arrangement.spacedBy(10.dp)
+
     ) {
 
         Text(
@@ -286,7 +326,7 @@ fun BreakerSelectionScreen(
         HorizontalDivider()
 
         Text(
-            text = "Protection Design",
+            text = "Automatic Protection Design",
             style =
                 MaterialTheme.typography.titleMedium
         )
@@ -297,25 +337,35 @@ fun BreakerSelectionScreen(
         HorizontalDivider()
 
         OutlinedTextField(
-            value = current,
+
+            value =
+                designCurrentText,
+
             onValueChange = {
-                current = it
+                designCurrentText = it
             },
+
             label = {
                 Text("Design Current Ib (A)")
             },
+
             modifier =
                 Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
-            value = faultCurrent,
+
+            value =
+                shortCircuitText,
+
             onValueChange = {
-                faultCurrent = it
+                shortCircuitText = it
             },
+
             label = {
                 Text("Short Circuit Icc (kA)")
             },
+
             modifier =
                 Modifier.fillMaxWidth()
         )
@@ -334,57 +384,89 @@ fun BreakerSelectionScreen(
         )
 
         Button(
+
             onClick = {
+
                 selectedBreaker = null
-                runBreakerDesign()
+
+                checkBreaker()
             },
+
             modifier =
                 Modifier.fillMaxWidth()
+
         ) {
-            Text("AUTO SELECT BREAKER")
+
+            Text(
+                "AUTO SELECT BREAKER"
+            )
         }
 
         HorizontalDivider()
 
         Text(
-            text = "Manual Breaker Selection",
+            text = "Engineer Override",
             style =
                 MaterialTheme.typography.titleMedium
         )
 
+        Text(
+            text =
+                "The program selects the first verified breaker that satisfies Ib ≤ In ≤ Iz and Icu ≥ Icc. You may override it and the program will re-check it."
+        )
+
         OutlinedButton(
+
             onClick = {
                 showBreakerMenu =
                     !showBreakerMenu
             },
+
             modifier =
                 Modifier.fillMaxWidth()
+
         ) {
+
             Text(
+
                 if (selectedBreaker == null) {
+
                     "CHANGE BREAKER"
+
                 } else {
+
                     "${selectedBreaker!!.ratedCurrentA.toInt()} A | " +
-                            "Icu ${"%.1f".format(selectedBreaker!!.icuKA)} kA"
+                            "Icu ${
+                                "%.1f"
+                                    .format(
+                                        selectedBreaker!!.icuKA
+                                    )
+                            } kA"
                 }
             )
         }
 
         DropdownMenu(
-            expanded = showBreakerMenu,
+
+            expanded =
+                showBreakerMenu,
+
             onDismissRequest = {
                 showBreakerMenu = false
             }
+
         ) {
 
             if (availableBreakers.isEmpty()) {
 
                 DropdownMenuItem(
+
                     text = {
                         Text(
                             "No verified breaker data available"
                         )
                     },
+
                     onClick = {
                         showBreakerMenu = false
                     }
@@ -395,13 +477,25 @@ fun BreakerSelectionScreen(
                 availableBreakers.forEach { breaker ->
 
                     DropdownMenuItem(
+
                         text = {
+
                             Text(
+
                                 "${breaker.ratedCurrentA.toInt()} A | " +
-                                        "Icu ${"%.1f".format(breaker.icuKA)} kA | " +
-                                        breaker.productFamily
+                                        "Icu ${
+                                            "%.1f"
+                                                .format(
+                                                    breaker.icuKA
+                                                )
+                                        } kA | " +
+                                        (
+                                            breaker.productFamily
+                                                ?: "Unknown"
+                                        )
                             )
                         },
+
                         onClick = {
 
                             selectedBreaker =
@@ -410,7 +504,7 @@ fun BreakerSelectionScreen(
                             showBreakerMenu =
                                 false
 
-                            runBreakerDesign(
+                            checkBreaker(
                                 breaker
                             )
                         }
@@ -419,12 +513,14 @@ fun BreakerSelectionScreen(
             }
         }
 
-        if (result.isNotEmpty()) {
+        if (resultText.isNotBlank()) {
 
             HorizontalDivider()
 
             Text(
-                text = result,
+
+                text = resultText,
+
                 style =
                     MaterialTheme.typography.bodyLarge
             )
@@ -441,60 +537,79 @@ fun BreakerSelectionScreen(
         Text(
             "Design Current: %.2f A"
                 .format(
-                    ProjectManager.calculation.designCurrentA
+                    ProjectManager
+                        .calculation
+                        .designCurrentA
                 )
         )
 
         Text(
             "Cable: %.1f mm²"
                 .format(
-                    ProjectManager.calculation.cableSizeMm2
+                    ProjectManager
+                        .calculation
+                        .cableSizeMm2
                 )
         )
 
         Text(
             "Cable Ampacity: %.2f A"
                 .format(
-                    ProjectManager.calculation.cableAmpacityA
+                    ProjectManager
+                        .calculation
+                        .cableAmpacityA
                 )
         )
 
         Text(
-            "Short Circuit: %.2f kA"
+            "Short Circuit: %.3f kA"
                 .format(
-                    ProjectManager.calculation.shortCircuitKA
+                    ProjectManager
+                        .calculation
+                        .shortCircuitKA
                 )
         )
 
         Text(
             "Breaker: %d A"
                 .format(
-                    ProjectManager.calculation.breakerRatingA
+                    ProjectManager
+                        .calculation
+                        .breakerRatingA
                 )
         )
 
         Text(
             "Breaker Icu: %.1f kA"
                 .format(
-                    ProjectManager.calculation.breakerIcuKA
+                    ProjectManager
+                        .calculation
+                        .breakerIcuKA
                 )
         )
 
         Text(
             "Design Status: ${
-                ProjectManager.calculation.designStatus
+                ProjectManager
+                    .calculation
+                    .designStatus
             }"
         )
 
         Spacer(
-            modifier = Modifier.height(10.dp)
+            modifier =
+                Modifier.height(10.dp)
         )
 
         Button(
+
             onClick = onBack,
+
             modifier =
                 Modifier.fillMaxWidth()
+
         ) {
+
             Text("Back")
         }
     }
