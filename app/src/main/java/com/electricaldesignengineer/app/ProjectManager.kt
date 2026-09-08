@@ -5,11 +5,31 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 
+/**
+ * Project state manager.
+ *
+ * Architecture:
+ *
+ * UI
+ *   ↓
+ * ProjectManager
+ *   ↓
+ * ProfessionalEngineeringCore
+ *
+ * IMPORTANT:
+ * ProjectManager stores project state only.
+ * Engineering calculations are delegated to
+ * ProfessionalEngineeringCore.
+ *
+ * ElectricalCalculator is retained temporarily only
+ * for legacy compatibility with screens that have not
+ * yet been migrated.
+ */
 object ProjectManager {
 
-    // =========================
+    // ============================================================
     // CURRENT PROJECT
-    // =========================
+    // ============================================================
 
     var calculation: ProjectCalculation by mutableStateOf(
         ProjectCalculation()
@@ -21,9 +41,9 @@ object ProjectManager {
     val loads: List<LoadItem>
         get() = _loads
 
-    // =========================
+    // ============================================================
     // NEW PROJECT
-    // =========================
+    // ============================================================
 
     fun startNewProject(
         projectName: String = "",
@@ -40,12 +60,19 @@ object ProjectManager {
 
         _loads.clear()
 
+        /*
+         * Temporary legacy compatibility.
+         *
+         * This will be removed after all remaining
+         * legacy screens are migrated away from
+         * ElectricalCalculator.
+         */
         ElectricalCalculator.reset()
     }
 
-    // =========================
+    // ============================================================
     // PROJECT INFORMATION
-    // =========================
+    // ============================================================
 
     fun updateProjectInfo(
         projectName: String = calculation.projectName,
@@ -61,9 +88,9 @@ object ProjectManager {
         )
     }
 
-    // =========================
+    // ============================================================
     // SYSTEM
-    // =========================
+    // ============================================================
 
     fun updateSystem(
         voltageV: Double = calculation.voltageV,
@@ -77,13 +104,11 @@ object ProjectManager {
             powerFactor = powerFactor.coerceIn(0.01, 1.0),
             isThreePhase = isThreePhase
         )
-
-        syncToElectricalCalculator()
     }
 
-    // =========================
+    // ============================================================
     // LOADS
-    // =========================
+    // ============================================================
 
     fun addLoad(load: LoadItem) {
         _loads.add(load)
@@ -98,96 +123,102 @@ object ProjectManager {
         calculateFromLoads()
     }
 
+    /**
+     * Calculates the complete project load through
+     * ProfessionalEngineeringCore.
+     *
+     * ProjectManager does NOT perform:
+     * - connected load calculation
+     * - demand load calculation
+     * - kVA calculation
+     * - effective PF calculation
+     * - current calculation
+     */
     fun calculateFromLoads(): ProjectCalculation {
 
-        var connectedKW = 0.0
-        var demandKW = 0.0
-        var totalKVA = 0.0
-
-        _loads.forEach { load ->
-
-            val connected =
-                load.quantity.coerceAtLeast(0.0) *
-                        load.powerKW.coerceAtLeast(0.0)
-
-            val demand =
-                connected *
-                        load.demandFactor.coerceIn(
-                            0.0,
-                            1.0
-                        )
-
-            val pf =
-                load.powerFactor.coerceIn(
-                    0.01,
-                    1.0
-                )
-
-            connectedKW += connected
-            demandKW += demand
-            totalKVA += demand / pf
-        }
-
-        val effectivePF =
-            if (totalKVA > 0.0) {
-
-                (
-                    demandKW /
-                            totalKVA
-                    ).coerceIn(
-                        0.01,
-                        1.0
-                    )
-
+        val phaseSystem =
+            if (calculation.isThreePhase) {
+                ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
             } else {
+                ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
+            }
 
-                calculation.powerFactor.coerceIn(
-                    0.01,
-                    1.0
+        val systemInput =
+            ProfessionalEngineeringCore.SystemInput(
+                voltageV = calculation.voltageV,
+                frequencyHz = calculation.frequencyHz,
+                phaseSystem = phaseSystem,
+                powerFactor = calculation.powerFactor
+            )
+
+        val loadInputs =
+            _loads.map { load ->
+                ProfessionalEngineeringCore.LoadInput(
+                    name = load.name,
+                    quantity = load.quantity,
+                    unitPowerKW = load.powerKW,
+                    demandFactor = load.demandFactor,
+                    powerFactor = load.powerFactor
                 )
             }
 
-        val designCurrentA =
-            if (calculation.isThreePhase) {
+        val result =
+            ProfessionalEngineeringCore.calculateLoads(
+                loads = loadInputs,
+                system = systemInput
+            )
 
-                ElectricalCalculator.threePhaseCurrent(
-                    totalKVA,
-                    calculation.voltageV
-                )
+        val status =
+            when {
+                _loads.isEmpty() ->
+                    "NO LOADS"
 
-            } else {
+                result.trace.status == EngineeringStatus.FAIL ->
+                    "LOAD CALCULATION FAILED"
 
-                ElectricalCalculator.singlePhaseCurrent(
-                    totalKVA,
-                    calculation.voltageV
-                )
+                result.trace.status == EngineeringStatus.WARNING ->
+                    "LOAD CALCULATION WARNING"
+
+                result.trace.status == EngineeringStatus.DATA_REQUIRED ->
+                    "LOAD DATA REQUIRED"
+
+                else ->
+                    "LOAD CALCULATION COMPLETE"
             }
 
         calculation = calculation.copy(
 
-            connectedKW = connectedKW,
+            connectedKW =
+                result.connectedKW,
 
-            demandKW = demandKW,
+            demandKW =
+                result.demandKW,
 
-            totalKVA = totalKVA,
+            totalKVA =
+                result.demandKVA,
 
-            designCurrentA = designCurrentA,
+            designCurrentA =
+                result.currentA,
 
-            powerFactor = effectivePF,
+            powerFactor =
+                result.effectivePowerFactor,
 
             designStatus =
-                if (_loads.isEmpty()) {
-                    "NO LOADS"
-                } else {
-                    "LOAD CALCULATION COMPLETE"
-                }
+                status
         )
-
-        syncToElectricalCalculator()
 
         return calculation
     }
 
+    /**
+     * Stores an externally calculated load result.
+     *
+     * This method is retained for compatibility with
+     * existing screens.
+     *
+     * New engineering calculations should call
+     * ProfessionalEngineeringCore directly.
+     */
     fun setLoadCalculation(
         connectedKW: Double,
         demandKW: Double,
@@ -226,13 +257,11 @@ object ProjectManager {
             designStatus =
                 "LOAD CALCULATION COMPLETE"
         )
-
-        syncToElectricalCalculator()
     }
 
-    // =========================
+    // ============================================================
     // CABLE
-    // =========================
+    // ============================================================
 
     fun setCableResult(
         cableSizeMm2: Double,
@@ -261,13 +290,11 @@ object ProjectManager {
             designStatus =
                 "CABLE CALCULATION COMPLETE"
         )
-
-        syncToElectricalCalculator()
     }
 
-    // =========================
+    // ============================================================
     // SHORT CIRCUIT
-    // =========================
+    // ============================================================
 
     fun setShortCircuit(
         shortCircuitKA: Double
@@ -280,13 +307,11 @@ object ProjectManager {
             designStatus =
                 "SHORT CIRCUIT CALCULATION COMPLETE"
         )
-
-        syncToElectricalCalculator()
     }
 
-    // =========================
+    // ============================================================
     // BREAKER
-    // =========================
+    // ============================================================
 
     fun setBreaker(
         breakerRatingA: Int,
@@ -303,13 +328,11 @@ object ProjectManager {
             designStatus =
                 "BREAKER SELECTION COMPLETE"
         )
-
-        syncToElectricalCalculator()
     }
 
-    // =========================
+    // ============================================================
     // TRANSFORMER
-    // =========================
+    // ============================================================
 
     fun setTransformer(
         transformerKVA: Double,
@@ -329,8 +352,6 @@ object ProjectManager {
             designStatus =
                 "TRANSFORMER SIZING COMPLETE"
         )
-
-        syncToElectricalCalculator()
     }
 
     fun setTransformerImpedance(
@@ -343,13 +364,11 @@ object ProjectManager {
                     0.01
                 )
         )
-
-        syncToElectricalCalculator()
     }
 
-    // =========================
+    // ============================================================
     // GENERATOR
-    // =========================
+    // ============================================================
 
     fun setGenerator(
         generatorKVA: Double
@@ -362,13 +381,11 @@ object ProjectManager {
             designStatus =
                 "GENERATOR SIZING COMPLETE"
         )
-
-        syncToElectricalCalculator()
     }
 
-    // =========================
-    // POWER FACTOR
-    // =========================
+    // ============================================================
+    // POWER FACTOR CORRECTION
+    // ============================================================
 
     fun setCapacitorBank(
         capacitorKVAR: Double
@@ -381,13 +398,11 @@ object ProjectManager {
             designStatus =
                 "POWER FACTOR CORRECTION COMPLETE"
         )
-
-        syncToElectricalCalculator()
     }
 
-    // =========================
+    // ============================================================
     // EARTHING
-    // =========================
+    // ============================================================
 
     fun setEarthing(
         earthResistanceOhm: Double,
@@ -412,14 +427,26 @@ object ProjectManager {
             designStatus =
                 "EARTHING CHECK COMPLETE"
         )
-
-        syncToElectricalCalculator()
     }
 
-    // =========================
-    // SYNC TO CALCULATOR
-    // =========================
+    // ============================================================
+    // LEGACY COMPATIBILITY
+    // ============================================================
+    //
+    // These two methods are intentionally retained temporarily.
+    //
+    // They are NOT used by the new engineering calculation path.
+    //
+    // Once all legacy screens are migrated:
+    // - remove syncToElectricalCalculator()
+    // - remove syncFromElectricalCalculator()
+    // - remove ElectricalCalculator dependency
+    //
+    // ============================================================
 
+    @Deprecated(
+        message = "Legacy compatibility only. Do not use for new calculations."
+    )
     fun syncToElectricalCalculator() {
 
         ElectricalCalculator.connectedKW =
@@ -477,10 +504,9 @@ object ProjectManager {
             calculation.capacitorKVAR
     }
 
-    // =========================
-    // SYNC FROM CALCULATOR
-    // =========================
-
+    @Deprecated(
+        message = "Legacy compatibility only. Do not use for new calculations."
+    )
     fun syncFromElectricalCalculator() {
 
         calculation = calculation.copy(
@@ -544,9 +570,9 @@ object ProjectManager {
         )
     }
 
-    // =========================
+    // ============================================================
     // RESET
-    // =========================
+    // ============================================================
 
     fun reset() {
 
@@ -555,6 +581,11 @@ object ProjectManager {
 
         _loads.clear()
 
+        /*
+         * Temporary legacy cleanup.
+         * Will disappear when ElectricalCalculator
+         * is completely removed.
+         */
         ElectricalCalculator.reset()
     }
 }
