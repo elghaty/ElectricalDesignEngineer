@@ -310,7 +310,8 @@ object AutoDesignService {
                     frequencyHz = 50.0
                 )
 
-            if (!transformerDesign.valid ||
+            if (
+                !transformerDesign.valid ||
                 transformerDesign.selectedTransformer == null
             ) {
 
@@ -332,8 +333,7 @@ object AutoDesignService {
             // ----------------------------------------------------
             // 4. Calculate transformer secondary short circuit
             //
-            // IMPORTANT:
-            // This is the bus short-circuit level.
+            // This is the transformer secondary bus fault level.
             //
             // We intentionally do NOT add downstream cable
             // impedance here because transformer catalog data
@@ -490,7 +490,7 @@ object AutoDesignService {
         transformer:
             ProfessionalEngineeringCore.TransformerData,
         voltageV: Double
-    ): ProfessionalEngineeringCore.ShortCircuitResult? {
+    ): ShortCircuitResult? {
 
         val kva =
             transformer.ratedPowerKVA
@@ -507,12 +507,12 @@ object AutoDesignService {
         }
 
         val input =
-            ProfessionalEngineeringCore.ShortCircuitInput(
+            ShortCircuitInput(
                 faultType =
-                    ProfessionalEngineeringCore.ShortCircuitFaultType.THREE_PHASE,
+                    ShortCircuitFaultType.THREE_PHASE,
 
                 source =
-                    ProfessionalEngineeringCore.ShortCircuitSourceInput(
+                    ShortCircuitSourceInput(
                         transformerKVA = kva,
                         voltageV = voltageV,
                         transformerImpedancePercent =
