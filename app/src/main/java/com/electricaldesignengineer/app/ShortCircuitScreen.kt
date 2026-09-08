@@ -29,104 +29,69 @@ fun ShortCircuitScreen(
 
     val project = ProjectManager.calculation
 
-    // =========================
-    // TRANSFORMER KVA
-    // =========================
+    // ============================================================
+    // INPUTS
+    // ============================================================
 
     var transformerKVA by remember {
-
         mutableStateOf(
-
-            if (project.transformerKVA > 0.0) {
-
-                "%.0f".format(
-                    project.transformerKVA
-                )
-
-            } else {
-
-                "1000"
-            }
+            if (project.transformerKVA > 0.0)
+                "%.0f".format(project.transformerKVA)
+            else
+                ""
         )
     }
-
-    // =========================
-    // VOLTAGE
-    // =========================
 
     var voltage by remember {
-
         mutableStateOf(
-
-            if (project.voltageV > 0.0) {
-
-                "%.0f".format(
-                    project.voltageV
-                )
-
-            } else {
-
-                "400"
-            }
+            if (project.voltageV > 0.0)
+                "%.0f".format(project.voltageV)
+            else
+                ""
         )
     }
 
-    // =========================
-    // TRANSFORMER IMPEDANCE
-    // =========================
-
-    var impedance by remember {
-
+    var impedancePercent by remember {
         mutableStateOf(
-
-            "%.2f".format(
-                project.transformerImpedancePercent
-            )
+            if (project.transformerImpedancePercent > 0.0)
+                "%.2f".format(project.transformerImpedancePercent)
+            else
+                ""
         )
     }
 
-    // =========================
+    // ============================================================
     // RESULT
-    // =========================
+    // ============================================================
 
-    var result by remember {
+    var resultText by remember {
         mutableStateOf("")
     }
 
-    // =========================
-    // CALCULATION
-    // =========================
+    var faultCurrentKA by remember {
+        mutableStateOf(project.shortCircuitKA)
+    }
 
     var ratedCurrentA by remember {
         mutableStateOf(0.0)
     }
 
-    var faultCurrentKA by remember {
-        mutableStateOf(0.0)
-    }
+    // ============================================================
+    // UI
+    // ============================================================
 
     Column(
-
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(
-                rememberScrollState()
-            )
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
 
-        verticalArrangement =
-            Arrangement.spacedBy(10.dp)
-
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-
-        // =========================
-        // TITLE
-        // =========================
 
         Text(
             text = "Short Circuit Current",
-            style =
-                MaterialTheme.typography.headlineSmall
+            style = MaterialTheme.typography.headlineSmall
         )
 
         Text(
@@ -135,261 +100,414 @@ fun ShortCircuitScreen(
                     "Current Project"
                 }
             }",
-            style =
-                MaterialTheme.typography.bodyMedium
+            style = MaterialTheme.typography.bodyMedium
         )
 
         HorizontalDivider()
 
-        // =========================
-        // ENGINEERING INPUTS
-        // =========================
+        // ========================================================
+        // TRANSFORMER DATA
+        // ========================================================
 
         Text(
             text = "Transformer Data",
-            style =
-                MaterialTheme.typography.titleMedium
+            style = MaterialTheme.typography.titleMedium
         )
 
         OutlinedTextField(
-
             value = transformerKVA,
-
             onValueChange = {
                 transformerKVA = it
             },
-
             label = {
-                Text(
-                    "Transformer Rating (kVA)"
-                )
+                Text("Transformer Rating (kVA)")
             },
-
-            modifier =
-                Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
-
             value = voltage,
-
             onValueChange = {
                 voltage = it
             },
-
             label = {
-                Text(
-                    "LV Voltage (V)"
-                )
+                Text("LV Voltage (V)")
             },
-
-            modifier =
-                Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
         )
 
         OutlinedTextField(
-
-            value = impedance,
-
+            value = impedancePercent,
             onValueChange = {
-                impedance = it
+                impedancePercent = it
             },
-
             label = {
-                Text(
-                    "Transformer Impedance (%Z)"
-                )
+                Text("Transformer Impedance (%Z)")
             },
-
-            modifier =
-                Modifier.fillMaxWidth()
+            modifier = Modifier.fillMaxWidth()
         )
 
         Text(
-            text =
-                "Final %Z must be taken from the transformer nameplate or manufacturer data.",
-            style =
-                MaterialTheme.typography.bodySmall
+            text = "Use the transformer nameplate/manufacturer value for %Z.",
+            style = MaterialTheme.typography.bodySmall
         )
 
-        // =========================
+        // ========================================================
         // CALCULATE
-        // =========================
+        // ========================================================
 
         Button(
-
             onClick = {
 
                 val kva =
                     transformerKVA
                         .toDoubleOrNull()
-                        ?.coerceAtLeast(0.0)
-                        ?: 0.0
+                        ?.takeIf { it > 0.0 }
 
                 val v =
                     voltage
                         .toDoubleOrNull()
-                        ?.coerceAtLeast(0.0)
-                        ?: 0.0
+                        ?.takeIf { it > 0.0 }
 
                 val z =
-                    impedance
+                    impedancePercent
                         .toDoubleOrNull()
-                        ?.coerceAtLeast(0.01)
-                        ?: 0.0
+                        ?.takeIf { it > 0.0 }
 
-                if (
-                    kva <= 0.0 ||
-                    v <= 0.0 ||
-                    z <= 0.0
-                ) {
+                if (kva == null || v == null || z == null) {
 
-                    result =
-                        "Please enter valid transformer data."
+                    resultText =
+                        """
+                        DATA REQUIRED
 
-                    ratedCurrentA = 0.0
+                        Please enter:
+
+                        • Transformer rating
+                        • LV voltage
+                        • Transformer %Z
+
+                        No engineering value was assumed.
+                        """.trimIndent()
+
                     faultCurrentKA = 0.0
+                    ratedCurrentA = 0.0
 
                 } else {
 
-                    // -------------------------
-                    // SAVE SYSTEM VOLTAGE
-                    // -------------------------
+                    // ====================================================
+                    // SAVE SYSTEM DATA
+                    // ====================================================
 
                     ProjectManager.updateSystem(
                         voltageV = v
                     )
 
-                    // -------------------------
-                    // SAVE TRANSFORMER
-                    // -------------------------
-
                     ProjectManager.setTransformer(
-
                         transformerKVA = kva,
-
-                        transformerImpedancePercent =
-                            z
+                        transformerImpedancePercent = z
                     )
 
-                    // -------------------------
-                    // RATED CURRENT
-                    // -------------------------
+                    // ====================================================
+                    // TRANSFORMER RATED CURRENT
+                    // ====================================================
 
                     ratedCurrentA =
-                        ElectricalCalculator
-                            .threePhaseCurrent(
-                                kva = kva,
-                                voltage = v
-                            )
+                        ProfessionalEngineeringCore.threePhaseCurrent(
+                            kva = kva,
+                            voltageV = v
+                        )
 
-                    // -------------------------
-                    // SHORT CIRCUIT
-                    // -------------------------
+                    // ====================================================
+                    // PROFESSIONAL SHORT-CIRCUIT ENGINE
+                    // ====================================================
+
+                    val input =
+                        ShortCircuitInput(
+
+                            faultType =
+                                ShortCircuitFaultType.THREE_PHASE,
+
+                            source =
+                                ShortCircuitSourceInput(
+
+                                    transformerKVA = kva,
+
+                                    voltageV = v,
+
+                                    transformerImpedancePercent = z,
+
+                                    transformerResistancePercent = null,
+
+                                    transformerReactancePercent = null,
+
+                                    upstreamShortCircuitKA = null,
+
+                                    upstreamResistanceOhm = null,
+
+                                    upstreamReactanceOhm = null
+                                ),
+
+                            cable = null
+                        )
+
+                    val calculation =
+                        ProfessionalEngineeringCore
+                            .calculateShortCircuit(input)
+
+                    // ====================================================
+                    // RESULT
+                    // ====================================================
 
                     faultCurrentKA =
-                        ElectricalCalculator
-                            .transformerShortCircuit(
+                        calculation.faultCurrentKA
 
-                                transformerKVA =
-                                    kva,
+                    // ====================================================
+                    // SAVE RESULT ONLY IF VALID
+                    // ====================================================
 
-                                voltage =
-                                    v,
+                    if (
+                        calculation.status ==
+                        EngineeringStatus.PASS
+                    ) {
 
-                                impedancePercent =
-                                    z
+                        ProjectManager.setShortCircuit(
+                            shortCircuitKA =
+                                calculation.faultCurrentKA
+                        )
+                    }
+
+                    // ====================================================
+                    // BUILD RESULT TEXT
+                    // ====================================================
+
+                    val impedance =
+                        calculation.equivalentImpedance
+
+                    val statusText =
+                        when (calculation.status) {
+
+                            EngineeringStatus.PASS ->
+                                "PASS"
+
+                            EngineeringStatus.FAIL ->
+                                "FAIL"
+
+                            EngineeringStatus.WARNING ->
+                                "WARNING"
+
+                            EngineeringStatus.DATA_REQUIRED ->
+                                "DATA REQUIRED"
+
+                            EngineeringStatus.NOT_CALCULATED ->
+                                "NOT CALCULATED"
+                        }
+
+                    val checksText =
+                        if (calculation.checks.isEmpty()) {
+
+                            "No checks returned."
+
+                        } else {
+
+                            calculation.checks.joinToString(
+                                separator = "\n"
+                            ) { check ->
+
+                                val value =
+                                    check.calculatedValue
+                                        ?.let {
+                                            "%.4f".format(it)
+                                        }
+                                        ?: "-"
+
+                                "• ${check.name}: " +
+                                        "${check.status} | " +
+                                        "$value ${check.unit} | " +
+                                        check.message
+                            }
+                        }
+
+                    resultText =
+                        buildString {
+
+                            appendLine(
+                                "SHORT CIRCUIT CALCULATION"
                             )
 
-                    // -------------------------
-                    // SAVE RESULT
-                    // -------------------------
+                            appendLine()
 
-                    ProjectManager.setShortCircuit(
-                        shortCircuitKA =
-                            faultCurrentKA
-                    )
+                            appendLine(
+                                "Status: $statusText"
+                            )
 
-                    result = """
-                        SHORT CIRCUIT CALCULATION
+                            appendLine()
 
-                        Transformer Rating:
-                        %.0f kVA
+                            appendLine(
+                                "Transformer Rating: " +
+                                        "%.0f kVA".format(kva)
+                            )
 
-                        LV Voltage:
-                        %.0f V
+                            appendLine(
+                                "LV Voltage: " +
+                                        "%.0f V".format(v)
+                            )
 
-                        Transformer Impedance:
-                        %.2f %%
+                            appendLine(
+                                "Transformer %Z: " +
+                                        "%.2f %%".format(z)
+                            )
 
-                        Transformer Rated Current:
-                        %.2f A
+                            appendLine()
 
-                        Prospective Short Circuit:
-                        %.2f kA
+                            appendLine(
+                                "Transformer Rated Current: " +
+                                        "%.2f A"
+                                            .format(ratedCurrentA)
+                            )
 
-                        Formula:
-                        Icc = In / (%Z / 100)
+                            appendLine()
 
-                        Design Status:
-                        %s
+                            appendLine(
+                                "Prospective Short Circuit: " +
+                                        "%.3f kA"
+                                            .format(
+                                                calculation
+                                                    .faultCurrentKA
+                                            )
+                            )
 
-                        ✓ Transformer data saved
-                        ✓ Short-circuit result saved
-                        ✓ Breaker Selection can use this Icc
-                    """.trimIndent().format(
+                            if (impedance != null) {
 
-                        kva,
+                                appendLine()
 
-                        v,
+                                appendLine(
+                                    "Equivalent Impedance:"
+                                )
 
-                        z,
+                                appendLine(
+                                    "R = %.6f Ω"
+                                        .format(
+                                            impedance
+                                                .resistanceOhm
+                                        )
+                                )
 
-                        ratedCurrentA,
+                                appendLine(
+                                    "X = %.6f Ω"
+                                        .format(
+                                            impedance
+                                                .reactanceOhm
+                                        )
+                                )
 
-                        faultCurrentKA,
+                                appendLine(
+                                    "|Z| = %.6f Ω"
+                                        .format(
+                                            impedance
+                                                .magnitudeOhm
+                                        )
+                                )
+                            }
 
-                        ProjectManager
-                            .calculation
-                            .designStatus
-                    )
+                            appendLine()
+
+                            appendLine(
+                                "ENGINEERING CHECKS"
+                            )
+
+                            appendLine()
+
+                            appendLine(checksText)
+
+                            appendLine()
+
+                            appendLine(
+                                "Standard: " +
+                                        (
+                                            calculation.trace.standard
+                                                ?.code
+                                                ?: "Not specified"
+                                        )
+                            )
+
+                            if (
+                                calculation.trace
+                                    .assumptions
+                                    .isNotEmpty()
+                            ) {
+
+                                appendLine()
+
+                                appendLine(
+                                    "ASSUMPTIONS"
+                                )
+
+                                calculation.trace
+                                    .assumptions
+                                    .forEach {
+
+                                        appendLine(
+                                            "• $it"
+                                        )
+                                    }
+                            }
+
+                            if (
+                                calculation.trace
+                                    .warnings
+                                    .isNotEmpty()
+                            ) {
+
+                                appendLine()
+
+                                appendLine(
+                                    "WARNINGS"
+                                )
+
+                                calculation.trace
+                                    .warnings
+                                    .forEach {
+
+                                        appendLine(
+                                            "• $it"
+                                        )
+                                    }
+                            }
+                        }
                 }
             },
 
-            modifier =
-                Modifier.fillMaxWidth()
-
+            modifier = Modifier.fillMaxWidth()
         ) {
+
             Text(
-                "Calculate & Save Short Circuit"
+                text = "Calculate & Save Short Circuit"
             )
         }
 
-        // =========================
+        // ========================================================
         // RESULT
-        // =========================
+        // ========================================================
 
-        if (result.isNotEmpty()) {
+        if (resultText.isNotBlank()) {
 
             HorizontalDivider()
 
             Text(
-                text = result,
-                style =
-                    MaterialTheme.typography.bodyLarge
+                text = resultText,
+                style = MaterialTheme.typography.bodyMedium
             )
         }
 
-        // =========================
-        // PROJECT RESULT
-        // =========================
+        // ========================================================
+        // CURRENT PROJECT RESULT
+        // ========================================================
 
         HorizontalDivider()
 
         Text(
             text = "Current Project Result",
-            style =
-                MaterialTheme.typography.titleMedium
+            style = MaterialTheme.typography.titleMedium
         )
 
         Text(
@@ -425,14 +543,12 @@ fun ShortCircuitScreen(
         Text(
             text =
                 "Transformer Rated Current: %.2f A"
-                    .format(
-                        ratedCurrentA
-                    )
+                    .format(ratedCurrentA)
         )
 
         Text(
             text =
-                "Short Circuit: %.2f kA"
+                "Short Circuit: %.3f kA"
                     .format(
                         ProjectManager
                             .calculation
@@ -450,22 +566,18 @@ fun ShortCircuitScreen(
         )
 
         Spacer(
-            modifier =
-                Modifier.height(10.dp)
+            modifier = Modifier.height(10.dp)
         )
 
-        // =========================
+        // ========================================================
         // BACK
-        // =========================
+        // ========================================================
 
         Button(
-
             onClick = onBack,
-
-            modifier =
-                Modifier.fillMaxWidth()
-
+            modifier = Modifier.fillMaxWidth()
         ) {
+
             Text("Back")
         }
     }
