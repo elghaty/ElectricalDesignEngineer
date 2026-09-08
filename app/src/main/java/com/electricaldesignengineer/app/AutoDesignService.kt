@@ -15,14 +15,30 @@ package com.electricaldesignengineer.app
  *   ↓
  * EngineeringCatalogRepository
  *
+ * Engineering sequence:
+ *
+ * Loads
+ *   ↓
+ * Demand calculation
+ *   ↓
+ * Transformer selection
+ *   ↓
+ * Transformer short-circuit level
+ *   ↓
+ * Cable selection
+ *   ↓
+ * Breaker selection
+ *   ↓
+ * Protection coordination
+ *
  * IMPORTANT:
- * - Does NOT use EngineeringDesignEngine.
- * - Does NOT perform independent electrical formulas.
- * - Does NOT invent transformer impedance.
- * - Cable is selected automatically by ProfessionalEngineeringCore.
- * - Breaker is selected automatically by ProfessionalEngineeringCore.
- * - Transformer is selected automatically by ProfessionalEngineeringCore.
- * - Engineer can later override the selected cable from the UI.
+ * - No EngineeringDesignEngine.
+ * - No invented transformer impedance.
+ * - No hardcoded short-circuit current.
+ * - Cable is automatically selected by ProfessionalEngineeringCore.
+ * - Breaker is automatically selected by ProfessionalEngineeringCore.
+ * - Transformer is automatically selected from the verified catalog.
+ * - Engineer can override the cable later from the UI.
  */
 object AutoDesignService {
 
@@ -118,7 +134,7 @@ object AutoDesignService {
         }
 
     // ============================================================
-    // TRANSFORMER DATA
+    // VERIFIED TRANSFORMER DATA
     // ============================================================
 
     private fun getTransformerData():
@@ -186,31 +202,14 @@ object AutoDesignService {
 
         return TransformerResult(
             requiredKVA = result.requiredKVA,
-
-            selectedTransformer =
-                transformer,
-
-            selectedKVA =
-                transformer?.ratedPowerKVA,
-
-            primaryVoltageV =
-                transformer?.primaryVoltageV,
-
-            secondaryVoltageV =
-                transformer?.secondaryVoltageV,
-
-            frequencyHz =
-                transformer?.frequencyHz,
-
-            impedancePercent =
-                transformer?.impedancePercent,
-
-            status =
-                result.status,
-
-            valid =
-                result.status == EngineeringStatus.PASS,
-
+            selectedTransformer = transformer,
+            selectedKVA = transformer?.ratedPowerKVA,
+            primaryVoltageV = transformer?.primaryVoltageV,
+            secondaryVoltageV = transformer?.secondaryVoltageV,
+            frequencyHz = transformer?.frequencyHz,
+            impedancePercent = transformer?.impedancePercent,
+            status = result.status,
+            valid = result.status == EngineeringStatus.PASS,
             message =
                 when (result.status) {
 
@@ -229,9 +228,7 @@ object AutoDesignService {
                     EngineeringStatus.NOT_CALCULATED ->
                         "Transformer selection was not calculated."
                 },
-
-            warnings =
-                result.trace.warnings
+            warnings = result.trace.warnings
         )
     }
 
@@ -250,6 +247,136 @@ object AutoDesignService {
             mutableListOf<FeederResult>()
 
         return try {
+
+            // ----------------------------------------------------
+            // 1. Validate system
+            // ----------------------------------------------------
+
+            val validationErrors =
+                system.validate()
+
+            if (validationErrors.isNotEmpty()) {
+
+                return SystemResult(
+                    system = system,
+                    feeders = emptyList(),
+                    valid = false,
+                    message =
+                        "DATA_REQUIRED: distribution system validation failed.",
+                    warnings = validationErrors
+                )
+            }
+
+            // ----------------------------------------------------
+            // 2. Calculate total demand
+            // ----------------------------------------------------
+
+            val demandKVA =
+                system.totalDemandLoadKVA()
+
+            if (demandKVA <= 0.0) {
+
+                return SystemResult(
+                    system = system,
+                    feeders = emptyList(),
+                    valid = false,
+                    message =
+                        "DATA_REQUIRED: total demand load is required.",
+                    warnings =
+                        listOf(
+                            "No valid demand load was found."
+                        )
+                )
+            }
+
+            // ----------------------------------------------------
+            // 3. Find transformer
+            // ----------------------------------------------------
+
+            val transformerNode =
+                system.getTransformer()
+
+            val transformerVoltage =
+                transformerNode?.voltage
+                    ?.takeIf { it > 0.0 }
+                    ?: 400.0
+
+            val transformerDesign =
+                designTransformer(
+                    demandKVA = demandKVA,
+                    designMarginPercent = 0.0,
+                    primaryVoltageV = null,
+                    secondaryVoltageV = transformerVoltage,
+                    frequencyHz = 50.0
+                )
+
+            if (!transformerDesign.valid ||
+                transformerDesign.selectedTransformer == null
+            ) {
+
+                return SystemResult(
+                    system = system,
+                    feeders = emptyList(),
+                    valid = false,
+                    message =
+                        transformerDesign.message,
+                    warnings =
+                        transformerDesign.warnings +
+                                "Automatic design cannot continue without a verified transformer."
+                )
+            }
+
+            val selectedTransformer =
+                transformerDesign.selectedTransformer
+
+            // ----------------------------------------------------
+            // 4. Calculate transformer secondary short circuit
+            //
+            // IMPORTANT:
+            // This is the bus short-circuit level.
+            //
+            // We intentionally do NOT add downstream cable
+            // impedance here because transformer catalog data
+            // normally gives only %Z.
+            //
+            // Therefore this value is conservative for breaker
+            // interrupting-capacity selection.
+            // ----------------------------------------------------
+
+            val transformerShortCircuit =
+                calculateTransformerShortCircuit(
+                    transformer = selectedTransformer,
+                    voltageV =
+                        selectedTransformer.secondaryVoltageV
+                            .takeIf { it > 0.0 }
+                            ?: transformerVoltage
+                )
+
+            if (
+                transformerShortCircuit == null ||
+                transformerShortCircuit.status != EngineeringStatus.PASS ||
+                transformerShortCircuit.faultCurrentKA <= 0.0
+            ) {
+
+                return SystemResult(
+                    system = system,
+                    feeders = emptyList(),
+                    valid = false,
+                    message =
+                        "DATA_REQUIRED: transformer short-circuit data is required.",
+                    warnings =
+                        listOf(
+                            "The selected transformer does not contain sufficient verified impedance data to calculate the secondary short-circuit level."
+                        )
+                )
+            }
+
+            val transformerShortCircuitKA =
+                transformerShortCircuit.faultCurrentKA
+
+            // ----------------------------------------------------
+            // 5. Design every feeder
+            // ----------------------------------------------------
 
             system.nodes
                 .filter { node ->
@@ -286,7 +413,9 @@ object AutoDesignService {
                             designFeeder(
                                 system = system,
                                 node = node,
-                                feeder = feeder
+                                feeder = feeder,
+                                sourceShortCircuitKA =
+                                    transformerShortCircuitKA
                             )
 
                         feederResults += result
@@ -296,6 +425,10 @@ object AutoDesignService {
                     }
                 }
 
+            // ----------------------------------------------------
+            // 6. Final system status
+            // ----------------------------------------------------
+
             val valid =
                 feederResults.isNotEmpty() &&
                         feederResults.all {
@@ -304,8 +437,11 @@ object AutoDesignService {
 
             val message =
                 if (valid) {
-                    "Automatic electrical design completed successfully."
+
+                    "PASS: automatic electrical design completed successfully."
+
                 } else {
+
                     "Design completed with one or more engineering issues."
                 }
 
@@ -315,7 +451,14 @@ object AutoDesignService {
                 valid = valid,
                 message = message,
                 warnings =
-                    systemWarnings.distinct()
+                    (
+                        listOf(
+                            "Selected transformer: ${selectedTransformer.ratedPowerKVA} kVA.",
+                            "Transformer secondary short-circuit level: ${transformerShortCircuitKA} kA."
+                        ) +
+                                systemWarnings
+                        )
+                        .distinct()
             )
 
         } catch (exception: Exception) {
@@ -340,13 +483,59 @@ object AutoDesignService {
     }
 
     // ============================================================
+    // TRANSFORMER SHORT CIRCUIT
+    // ============================================================
+
+    private fun calculateTransformerShortCircuit(
+        transformer:
+            ProfessionalEngineeringCore.TransformerData,
+        voltageV: Double
+    ): ProfessionalEngineeringCore.ShortCircuitResult? {
+
+        val kva =
+            transformer.ratedPowerKVA
+                .takeIf { it > 0.0 }
+                ?: return null
+
+        val impedancePercent =
+            transformer.impedancePercent
+                .takeIf { it > 0.0 }
+                ?: return null
+
+        if (voltageV <= 0.0) {
+            return null
+        }
+
+        val input =
+            ProfessionalEngineeringCore.ShortCircuitInput(
+                faultType =
+                    ProfessionalEngineeringCore.ShortCircuitFaultType.THREE_PHASE,
+
+                source =
+                    ProfessionalEngineeringCore.ShortCircuitSourceInput(
+                        transformerKVA = kva,
+                        voltageV = voltageV,
+                        transformerImpedancePercent =
+                            impedancePercent
+                    ),
+
+                cable = null
+            )
+
+        return ProfessionalEngineeringCore.calculateShortCircuit(
+            input = input
+        )
+    }
+
+    // ============================================================
     // FEEDER DESIGN
     // ============================================================
 
     private fun designFeeder(
         system: DistributionSystem,
         node: DistributionNode,
-        feeder: FeederDesign
+        feeder: FeederDesign,
+        sourceShortCircuitKA: Double
     ): FeederResult {
 
         val warnings =
@@ -445,7 +634,10 @@ object AutoDesignService {
 
         val correctionFactor =
             feeder.correctionFactorTotal
-                .coerceIn(0.0001, 1.0)
+                .coerceIn(
+                    0.0001,
+                    1.0
+                )
 
         // --------------------------------------------------------
         // 8. Maximum parallel runs
@@ -460,8 +652,11 @@ object AutoDesignService {
 
         val maximumVoltageDrop =
             if (feeder.maximumVoltageDropPercent > 0.0) {
+
                 feeder.maximumVoltageDropPercent
+
             } else {
+
                 5.0
             }
 
@@ -548,18 +743,15 @@ object AutoDesignService {
                     cableResult.parallelRuns,
                 ampacityIzA =
                     cableResult.totalAmpacityA
-                        .takeIf {
-                            it > 0.0
-                        },
+                        .takeIf { it > 0.0 },
                 voltageDropPercent =
                     cableResult.voltageDropPercent
-                        .takeIf {
-                            it >= 0.0
-                        },
+                        .takeIf { it >= 0.0 },
                 breakerRatingA = null,
                 breakerIcuKA = null,
                 breakerIcsKA = null,
-                shortCircuitCurrentKA = null,
+                shortCircuitCurrentKA =
+                    sourceShortCircuitKA,
                 protectionPassed = false,
                 valid = false,
                 message =
@@ -591,55 +783,48 @@ object AutoDesignService {
             true
 
         // --------------------------------------------------------
-        // 13. Short circuit source
+        // 13. Short circuit
+        //
+        // We use the transformer secondary bus fault level
+        // conservatively for breaker interrupting-capacity
+        // selection.
         // --------------------------------------------------------
 
         val shortCircuitKA =
-            if (feeder.shortCircuitCurrentKA > 0.0) {
+            sourceShortCircuitKA
 
-                feeder.shortCircuitCurrentKA
+        if (shortCircuitKA <= 0.0) {
 
-            } else {
-
-                warnings +=
-                    "Short-circuit source data is not available. " +
-                            "Transformer/source impedance must be entered."
-
-                return FeederResult(
-                    nodeId = node.id,
-                    nodeName = node.name,
-                    designCurrentA = designCurrent,
-                    cableSizeMm2 =
-                        feeder.conductorSizeMm2,
-                    parallelRuns =
-                        feeder.parallelRuns,
-                    ampacityIzA =
-                        feeder.ampacityIz,
-                    voltageDropPercent =
-                        feeder.voltageDropPercent,
-                    breakerRatingA = null,
-                    breakerIcuKA = null,
-                    breakerIcsKA = null,
-                    shortCircuitCurrentKA = null,
-                    protectionPassed = false,
-                    valid = false,
-                    message =
-                        "DATA_REQUIRED: upstream short-circuit current " +
-                                "or transformer/source impedance is required.",
-                    warnings =
-                        warnings.distinct()
-                )
-            }
-
-        // --------------------------------------------------------
-        // 14. Store short circuit
-        // --------------------------------------------------------
+            return FeederResult(
+                nodeId = node.id,
+                nodeName = node.name,
+                designCurrentA = designCurrent,
+                cableSizeMm2 =
+                    feeder.conductorSizeMm2,
+                parallelRuns =
+                    feeder.parallelRuns,
+                ampacityIzA =
+                    feeder.ampacityIz,
+                voltageDropPercent =
+                    feeder.voltageDropPercent,
+                breakerRatingA = null,
+                breakerIcuKA = null,
+                breakerIcsKA = null,
+                shortCircuitCurrentKA = null,
+                protectionPassed = false,
+                valid = false,
+                message =
+                    "DATA_REQUIRED: valid transformer/source short-circuit level is required.",
+                warnings =
+                    warnings.distinct()
+            )
+        }
 
         feeder.shortCircuitCurrentKA =
             shortCircuitKA
 
         // --------------------------------------------------------
-        // 15. Breaker poles
+        // 14. Breaker poles
         // --------------------------------------------------------
 
         val requiredPoles =
@@ -653,7 +838,7 @@ object AutoDesignService {
             }
 
         // --------------------------------------------------------
-        // 16. Breaker design
+        // 15. Breaker design
         // --------------------------------------------------------
 
         val breakerInput =
@@ -716,7 +901,7 @@ object AutoDesignService {
         }
 
         // --------------------------------------------------------
-        // 17. Store breaker
+        // 16. Store breaker
         // --------------------------------------------------------
 
         feeder.breakerRatingIn =
@@ -732,27 +917,32 @@ object AutoDesignService {
             true
 
         // --------------------------------------------------------
-        // 18. Protection checks
+        // 17. Protection checks
         // --------------------------------------------------------
 
         val protectionChecks =
             evaluateProtection(
                 designCurrentA =
                     designCurrent,
+
                 cableAmpacityA =
                     feeder.ampacityIz,
+
                 breakerRatingA =
                     feeder.breakerRatingIn,
+
                 shortCircuitKA =
                     shortCircuitKA,
+
                 breakerIcuKA =
                     feeder.breakerIcuKA,
+
                 breakerIcsKA =
                     feeder.breakerIcsKA
             )
 
         // --------------------------------------------------------
-        // 19. Voltage drop
+        // 18. Voltage drop
         // --------------------------------------------------------
 
         val voltageDropPassed =
@@ -766,7 +956,7 @@ object AutoDesignService {
         }
 
         // --------------------------------------------------------
-        // 20. Final validity
+        // 19. Final validity
         // --------------------------------------------------------
 
         val valid =
@@ -787,7 +977,7 @@ object AutoDesignService {
             }
 
         // --------------------------------------------------------
-        // 21. Final result
+        // 20. Final result
         // --------------------------------------------------------
 
         return FeederResult(
@@ -837,7 +1027,10 @@ object AutoDesignService {
             warnings =
                 (
                     warnings +
-                            protectionChecks.second
+                            protectionChecks.second +
+                            listOf(
+                                "Short-circuit level used for breaker selection is the transformer secondary bus fault level."
+                            )
                     )
                     .distinct()
         )
@@ -851,11 +1044,6 @@ object AutoDesignService {
         node: DistributionNode,
         feeder: FeederDesign
     ): Double {
-
-        /*
-         * If the feeder already contains a valid current
-         * calculated by the engineering core, use it.
-         */
 
         if (feeder.designCurrentIb > 0.0) {
             return feeder.designCurrentIb
@@ -974,10 +1162,6 @@ object AutoDesignService {
         val warnings =
             mutableListOf<String>()
 
-        // --------------------------------------------------------
-        // Ib <= In <= Iz
-        // --------------------------------------------------------
-
         val currentCoordinationPassed =
             designCurrentA <=
                     breakerRatingA &&
@@ -987,13 +1171,8 @@ object AutoDesignService {
         if (!currentCoordinationPassed) {
 
             warnings +=
-                "Protection coordination failed: " +
-                        "Ib <= In <= Iz is not satisfied."
+                "Protection coordination failed: Ib <= In <= Iz is not satisfied."
         }
-
-        // --------------------------------------------------------
-        // Icu >= prospective short circuit
-        // --------------------------------------------------------
 
         val breakingCapacityPassed =
             breakerIcuKA >=
@@ -1002,13 +1181,8 @@ object AutoDesignService {
         if (!breakingCapacityPassed) {
 
             warnings +=
-                "Breaker Icu is lower than the prospective " +
-                        "short-circuit current."
+                "Breaker Icu is lower than the prospective short-circuit current."
         }
-
-        // --------------------------------------------------------
-        // Ics
-        // --------------------------------------------------------
 
         val serviceBreakingCapacityPassed =
             if (breakerIcsKA > 0.0) {
@@ -1024,8 +1198,7 @@ object AutoDesignService {
         if (!serviceBreakingCapacityPassed) {
 
             warnings +=
-                "Breaker Ics is lower than the prospective " +
-                        "short-circuit current."
+                "Breaker Ics is lower than the prospective short-circuit current."
         }
 
         return (
@@ -1105,12 +1278,10 @@ object AutoDesignService {
                 "PASS: cable selected successfully."
 
             EngineeringStatus.FAIL ->
-                "FAIL: no cable configuration satisfies " +
-                        "the specified design constraints."
+                "FAIL: no cable configuration satisfies the specified design constraints."
 
             EngineeringStatus.DATA_REQUIRED ->
-                "DATA_REQUIRED: verified cable engineering " +
-                        "data is required."
+                "DATA_REQUIRED: verified cable engineering data is required."
 
             else ->
                 "Cable design requires review."
@@ -1131,12 +1302,10 @@ object AutoDesignService {
                 "PASS: breaker selected successfully."
 
             EngineeringStatus.FAIL ->
-                "FAIL: no breaker satisfies " +
-                        "the specified design requirements."
+                "FAIL: no breaker satisfies the specified design requirements."
 
             EngineeringStatus.DATA_REQUIRED ->
-                "DATA_REQUIRED: verified breaker engineering " +
-                        "data is required."
+                "DATA_REQUIRED: verified breaker engineering data is required."
 
             else ->
                 "Breaker design requires review."
