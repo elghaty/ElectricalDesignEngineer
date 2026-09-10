@@ -217,7 +217,7 @@ Column(
                     )
                     appendLine(
                         "%.2f Ω".format(
-                            earth.maximumEarthResistanceOhm
+                            earth.maximumResistanceOhm
                         )
                     )
                     appendLine()
@@ -226,7 +226,14 @@ Column(
                         "Design Result:"
                     )
                     appendLine(
-                        earth.designResult
+                        if (
+                            earth.status ==
+                            EngineeringStatus.PASS
+                        ) {
+                            "EARTHING CHECK PASS"
+                        } else {
+                            "EARTHING RESISTANCE TOO HIGH"
+                        }
                     )
                     appendLine()
 
