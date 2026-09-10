@@ -25,12 +25,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import kotlin.math.abs
 
 private enum class TransformerSource {
-    VERIFIED_CATALOG,
-    EEHC_STANDARD,
-    NAMEPLATE
+    STANDARD_RATING,
+    NAMEPLATE,
+    VERIFIED_CATALOG
 }
 
 @Composable
@@ -40,6 +39,13 @@ fun ShortCircuitScreen(
 
     val project = ProjectManager.calculation
 
+    val standardTransformers =
+        remember {
+            EngineeringCatalogRepository
+                .standardTransformerOptions()
+                .sortedBy { it.ratedPowerKVA }
+        }
+
     val verifiedTransformers =
         remember {
             EngineeringCatalogRepository
@@ -48,76 +54,64 @@ fun ShortCircuitScreen(
                 .sortedBy { it.ratedPowerKVA }
         }
 
-    val standardTransformers =
-        remember {
-            EngineeringCatalogRepository
-                .allStandardTransformers()
-                .sortedBy { it.ratingKVA }
-        }
-
-    val defaultSource =
-        if (verifiedTransformers.isNotEmpty()) {
-            TransformerSource.VERIFIED_CATALOG
-        } else {
-            TransformerSource.EEHC_STANDARD
-        }
-
     var transformerSource by remember {
-        mutableStateOf(defaultSource)
+        mutableStateOf(
+            if (verifiedTransformers.isNotEmpty()) {
+                TransformerSource.VERIFIED_CATALOG
+            } else {
+                TransformerSource.STANDARD_RATING
+            }
+        )
+    }
+
+    val requiredKVA =
+        when {
+            project.totalKVA > 0.0 ->
+                project.totalKVA
+
+            project.demandKW > 0.0 ->
+                project.demandKW /
+                    project.powerFactor.coerceIn(
+                        0.01,
+                        1.0
+                    )
+
+            else ->
+                0.0
+        }
+
+    val recommendedStandard =
+        standardTransformers
+            .firstOrNull {
+                it.ratedPowerKVA >= requiredKVA
+            }
+            ?: standardTransformers.lastOrNull()
+
+    var selectedStandardTransformer by remember {
+        mutableStateOf(
+            recommendedStandard
+        )
     }
 
     var selectedCatalogTransformer by remember {
         mutableStateOf(
-            verifiedTransformers.firstOrNull {
-                project.transformerKVA > 0.0 &&
-                    abs(
-                        it.ratedPowerKVA -
-                            project.transformerKVA
-                    ) < 0.001
-            } ?: verifiedTransformers.firstOrNull()
+            verifiedTransformers.firstOrNull()
         )
-    }
-
-    var catalogMenuExpanded by remember {
-        mutableStateOf(false)
-    }
-
-    val requiredKVA =
-        project.totalKVA
-            .takeIf { it > 0.0 }
-            ?: project.demandKW
-                .takeIf { it > 0.0 }
-                ?.div(
-                    project.powerFactor
-                        .coerceIn(0.01, 1.0)
-                )
-            ?: 0.0
-
-    val recommendedStandard =
-        remember(
-            requiredKVA,
-            standardTransformers
-        ) {
-            EngineeringCatalogRepository
-                .recommendStandardTransformer(
-                    requiredKVA = requiredKVA
-                )
-        }
-
-    var selectedStandardTransformer by remember {
-        mutableStateOf(recommendedStandard)
     }
 
     var standardMenuExpanded by remember {
         mutableStateOf(false)
     }
 
+    var catalogMenuExpanded by remember {
+        mutableStateOf(false)
+    }
+
     var nameplateKVA by remember {
         mutableStateOf(
             if (project.transformerKVA > 0.0) {
-                "%.0f".format(
-                    project.transformerKVA
-                )
+                project.transformerKVA
+                    .toString()
             } else {
                 ""
             }
@@ -127,9 +121,8 @@ fun ShortCircuitScreen(
     var nameplateVoltage by remember {
         mutableStateOf(
             if (project.voltageV > 0.0) {
-                "%.0f".format(
-                    project.voltageV
-                )
+                project.voltageV
+                    .toString()
             } else {
                 ""
             }
@@ -142,9 +135,8 @@ fun ShortCircuitScreen(
                 project.transformerImpedancePercent >
                 0.0
             ) {
-                "%.2f".format(
-                    project.transformerImpedancePercent
-                )
+                project.transformerImpedancePercent
+                    .toString()
             } else {
                 ""
             }
@@ -159,23 +151,31 @@ fun ShortCircuitScreen(
         mutableStateOf(0.0)
     }
 
-    fun sourceName(
-        source: TransformerSource
-    ): String {
-        return when (source) {
+    fun sourceName(): String {
+        return when (transformerSource) {
 
-            TransformerSource.VERIFIED_CATALOG ->
-                "Verified Manufacturer Catalog"
-
-            TransformerSource.EEHC_STANDARD ->
-                "EEHC Standard Rating"
+            TransformerSource.STANDARD_RATING ->
+                "Standard Transformer Rating"
 
             TransformerSource.NAMEPLATE ->
                 "Existing Transformer / Nameplate"
+
+            TransformerSource.VERIFIED_CATALOG ->
+                "Verified Manufacturer Catalog"
         }
     }
 
-    fun calculateShortCircuit(
+    fun parsePositive(
+        value: String
+    ): Double? {
+        return value
+            .replace(",", ".")
+            .trim()
+            .toDoubleOrNull()
+            ?.takeIf { it > 0.0 }
+    }
+
+    fun calculate(
         kva: Double,
         voltageV: Double,
         impedancePercent: Double,
@@ -189,10 +189,15 @@ fun ShortCircuitScreen(
         ) {
 
             resultText =
-                "DATA REQUIRED\n\n" +
-                    "Transformer rating, LV voltage and " +
-                    "transformer impedance must be valid " +
-                    "positive engineering values."
+                """
+                DATA REQUIRED
+
+                Transformer rating, LV voltage and transformer %Z
+                must all be supplied as positive engineering values.
+
+                IMPORTANT:
+                Transformer %Z is not assumed by the software.
+                """.trimIndent()
 
             return
         }
@@ -221,27 +226,18 @@ fun ShortCircuitScreen(
 
                 source =
                     ShortCircuitSourceInput(
-                        transformerKVA =
-                            kva,
-
-                        voltageV =
-                            voltageV,
-
+                        transformerKVA = kva,
+                        voltageV = voltageV,
                         transformerImpedancePercent =
                             impedancePercent,
-
                         transformerResistancePercent =
                             null,
-
                         transformerReactancePercent =
                             null,
-
                         upstreamShortCircuitKA =
                             null,
-
                         upstreamResistanceOhm =
                             null,
-
                         upstreamReactanceOhm =
                             null
                     ),
@@ -255,7 +251,7 @@ fun ShortCircuitScreen(
                     input
                 )
 
-        val statusText =
+        val status =
             when (calculation.status) {
 
                 EngineeringStatus.PASS ->
@@ -277,31 +273,6 @@ fun ShortCircuitScreen(
         val impedance =
             calculation.equivalentImpedance
 
-        val checksText =
-            if (calculation.checks.isEmpty()) {
-
-                "No checks returned."
-
-            } else {
-
-                calculation.checks.joinToString(
-                    separator = "\n"
-                ) { check ->
-
-                    val value =
-                        check.calculatedValue
-                            ?.let {
-                                "%.4f".format(it)
-                            }
-                            ?: "-"
-
-                    "• ${check.name}: " +
-                        "${check.status} | " +
-                        "$value ${check.unit} | " +
-                        check.message
-                }
-            }
-
         resultText =
             buildString {
 
@@ -312,16 +283,13 @@ fun ShortCircuitScreen(
                 appendLine()
 
                 appendLine(
-                    "Transformer Source: " +
-                        sourceName(
-                            transformerSource
-                        )
+                    "Source: ${sourceName()}"
                 )
 
                 appendLine()
 
                 appendLine(
-                    "Status: $statusText"
+                    "Status: $status"
                 )
 
                 appendLine()
@@ -366,7 +334,7 @@ fun ShortCircuitScreen(
                     appendLine()
 
                     appendLine(
-                        "Equivalent Impedance:"
+                        "Equivalent Impedance"
                     )
 
                     appendLine(
@@ -396,22 +364,70 @@ fun ShortCircuitScreen(
 
                 appendLine()
 
-                appendLine(
-                    checksText
-                )
+                if (
+                    calculation.checks.isEmpty()
+                ) {
 
-                appendLine()
+                    appendLine(
+                        "No engineering checks returned."
+                    )
 
-                appendLine(
-                    "Standard: " +
-                        (
-                            calculation
-                                .trace
-                                .standard
-                                ?.code
-                                ?: "Not specified"
+                } else {
+
+                    calculation.checks.forEach {
+                        check ->
+
+                        appendLine(
+                            "• ${check.name}: " +
+                                "${check.status}"
                         )
-                )
+
+                        if (
+                            check.calculatedValue !=
+                            null
+                        ) {
+
+                            appendLine(
+                                "  Calculated: " +
+                                    "%.4f".format(
+                                        check.calculatedValue
+                                    ) +
+                                    " " +
+                                    check.unit
+                            )
+                        }
+
+                        if (
+                            check.requiredValue !=
+                            null
+                        ) {
+
+                            appendLine(
+                                "  Required: " +
+                                    "%.4f".format(
+                                        check.requiredValue
+                                    ) +
+                                    " " +
+                                    check.unit
+                            )
+                        }
+
+                        appendLine(
+                            "  ${check.message}"
+                        )
+                    }
+                }
+
+                calculation.trace.standard?.let {
+                    standard ->
+
+                    appendLine()
+
+                    appendLine(
+                        "Standard: " +
+                            standard.code
+                    )
+                }
 
                 if (referenceMode) {
 
@@ -422,19 +438,15 @@ fun ShortCircuitScreen(
                     )
 
                     appendLine(
-                        "The transformer rating and %Z " +
-                            "are based on the EEHC " +
-                            "standard/reference transformer table."
+                        "The transformer rating comes " +
+                            "from the standard transformer " +
+                            "rating table."
                     )
 
                     appendLine(
-                        "This is suitable for preliminary " +
-                            "short-circuit assessment only."
-                    )
-
-                    appendLine(
-                        "Final design must use the actual " +
-                            "transformer manufacturer nameplate %Z."
+                        "The transformer %Z entered above " +
+                            "must still come from the actual " +
+                            "nameplate or verified technical data."
                     )
                 }
 
@@ -455,7 +467,6 @@ fun ShortCircuitScreen(
                         .trace
                         .assumptions
                         .forEach {
-
                             appendLine(
                                 "• $it"
                             )
@@ -479,7 +490,6 @@ fun ShortCircuitScreen(
                         .trace
                         .warnings
                         .forEach {
-
                             appendLine(
                                 "• $it"
                             )
@@ -522,15 +532,10 @@ fun ShortCircuitScreen(
 
         Text(
             text =
-                "Project: ${
+                "Project: " +
                     project.projectName.ifBlank {
                         "Current Project"
                     }
-                }",
-            style =
-                MaterialTheme
-                    .typography
-                    .bodyMedium
         )
 
         HorizontalDivider()
@@ -547,11 +552,16 @@ fun ShortCircuitScreen(
         Text(
             text =
                 if (requiredKVA > 0.0) {
-                    "Project demand: %.2f kVA"
-                        .format(requiredKVA)
+
+                    "Project demand: " +
+                        "%.2f kVA".format(
+                            requiredKVA
+                        )
+
                 } else {
-                    "Project demand is not available. " +
-                        "Select transformer manually."
+
+                    "Project transformer demand " +
+                        "is not available."
                 }
         )
 
@@ -569,6 +579,7 @@ fun ShortCircuitScreen(
         Row(
             modifier =
                 Modifier.fillMaxWidth(),
+
             horizontalArrangement =
                 Arrangement.spacedBy(8.dp)
         ) {
@@ -577,31 +588,15 @@ fun ShortCircuitScreen(
                 onClick = {
                     transformerSource =
                         TransformerSource
-                            .VERIFIED_CATALOG
+                            .STANDARD_RATING
                 },
-                modifier =
-                    Modifier.weight(1f),
-                enabled =
-                    verifiedTransformers.isNotEmpty()
-            ) {
 
-                Text(
-                    "Manufacturer"
-                )
-            }
-
-            OutlinedButton(
-                onClick = {
-                    transformerSource =
-                        TransformerSource
-                            .EEHC_STANDARD
-                },
                 modifier =
                     Modifier.weight(1f)
             ) {
 
                 Text(
-                    "EEHC Standard"
+                    "Standard"
                 )
             }
 
@@ -611,6 +606,7 @@ fun ShortCircuitScreen(
                         TransformerSource
                             .NAMEPLATE
                 },
+
                 modifier =
                     Modifier.weight(1f)
             ) {
@@ -619,31 +615,161 @@ fun ShortCircuitScreen(
                     "Nameplate"
                 )
             }
+
+            OutlinedButton(
+                onClick = {
+                    transformerSource =
+                        TransformerSource
+                            .VERIFIED_CATALOG
+                },
+
+                enabled =
+                    verifiedTransformers
+                        .isNotEmpty(),
+
+                modifier =
+                    Modifier.weight(1f)
+            ) {
+
+                Text(
+                    "Manufacturer"
+                )
+            }
         }
 
         Text(
             text =
-                "Selected: ${
-                    sourceName(
-                        transformerSource
-                    )
-                }",
+                "Selected source: " +
+                    sourceName(),
             style =
                 MaterialTheme
                     .typography
                     .bodySmall
         )
 
-        // ========================================================
-        // VERIFIED MANUFACTURER CATALOG
-        // ========================================================
+        HorizontalDivider()
+
+        if (
+            transformerSource ==
+            TransformerSource.STANDARD_RATING
+        ) {
+
+            Text(
+                text =
+                    "Standard Transformer Rating",
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleMedium
+            )
+
+            if (
+                standardTransformers.isEmpty()
+            ) {
+
+                Text(
+                    "No standard transformer ratings available."
+                )
+
+            } else {
+
+                TransformerDropdown(
+                    expanded =
+                        standardMenuExpanded,
+
+                    onExpandedChange = {
+                        standardMenuExpanded =
+                            !standardMenuExpanded
+                    },
+
+                    title =
+                        selectedStandardTransformer
+                            ?.let {
+                                "%.0f kVA - %.0f V - %.0f Hz"
+                                    .format(
+                                        it.ratedPowerKVA,
+                                        it.secondaryVoltageV,
+                                        it.frequencyHz
+                                    )
+                            }
+                            ?: "Select transformer"
+                ) {
+
+                    standardTransformers.forEach {
+                        transformer ->
+
+                        DropdownMenuItem(
+                            text = {
+
+                                Text(
+                                    "%.0f kVA - %.0f V - %.0f Hz"
+                                        .format(
+                                            transformer
+                                                .ratedPowerKVA,
+
+                                            transformer
+                                                .secondaryVoltageV,
+
+                                            transformer
+                                                .frequencyHz
+                                        )
+                                )
+                            },
+
+                            onClick = {
+
+                                selectedStandardTransformer =
+                                    transformer
+
+                                standardMenuExpanded =
+                                    false
+                            }
+                        )
+                    }
+                }
+
+                selectedStandardTransformer?.let {
+                    transformer ->
+
+                    Text(
+                        "Selected rating: " +
+                            "%.0f kVA"
+                                .format(
+                                    transformer
+                                        .ratedPowerKVA
+                                )
+                    )
+
+                    Text(
+                        "LV voltage: " +
+                            "%.0f V"
+                                .format(
+                                    transformer
+                                        .secondaryVoltageV
+                                )
+                    )
+
+                    Text(
+                        "Frequency: " +
+                            "%.0f Hz"
+                                .format(
+                                    transformer
+                                        .frequencyHz
+                                )
+                    )
+
+                    Text(
+                        "Transformer %Z must be entered " +
+                            "from actual transformer data."
+                    )
+                }
+            }
+        }
 
         if (
             transformerSource ==
             TransformerSource.VERIFIED_CATALOG
         ) {
-
-            HorizontalDivider()
 
             Text(
                 text =
@@ -659,15 +785,8 @@ fun ShortCircuitScreen(
             ) {
 
                 Text(
-                    text =
-                        "No verified manufacturer transformer " +
-                            "records are currently available."
-                )
-
-                Text(
-                    text =
-                        "Use EEHC Standard Rating or " +
-                            "Existing Transformer / Nameplate."
+                    "No verified manufacturer transformer " +
+                        "records are available."
                 )
 
             } else {
@@ -684,9 +803,8 @@ fun ShortCircuitScreen(
                     title =
                         selectedCatalogTransformer
                             ?.let {
-                                "${it.ratedPowerKVA.toInt()} kVA - " +
-                                    "${it.manufacturerName} - " +
-                                    "${it.productFamily}"
+                                "${it.manufacturerName} - " +
+                                    "${it.ratedPowerKVA.toInt()} kVA"
                             }
                             ?: "Select transformer"
                 ) {
@@ -698,16 +816,8 @@ fun ShortCircuitScreen(
                             text = {
 
                                 Text(
-                                    "${transformer.ratedPowerKVA.toInt()} kVA - " +
-                                        "${transformer.manufacturerName} - " +
-                                        "${transformer.productFamily}" +
-                                        (
-                                            transformer.partNumber
-                                                ?.let {
-                                                    " - $it"
-                                                }
-                                                ?: ""
-                                            )
+                                    "${transformer.manufacturerName} - " +
+                                        "${transformer.ratedPowerKVA.toInt()} kVA"
                                 )
                             },
 
@@ -729,271 +839,47 @@ fun ShortCircuitScreen(
                     Text(
                         "Rating: %.0f kVA"
                             .format(
-                                transformer.ratedPowerKVA
+                                transformer
+                                    .ratedPowerKVA
                             )
                     )
 
                     Text(
-                        "LV Voltage: %.0f V"
+                        "LV voltage: %.0f V"
                             .format(
-                                transformer.secondaryVoltageV
+                                transformer
+                                    .secondaryVoltageV
                             )
                     )
 
                     Text(
                         "Frequency: %.0f Hz"
                             .format(
-                                transformer.frequencyHz
+                                transformer
+                                    .frequencyHz
                             )
                     )
 
                     Text(
-                        "Impedance: ${
-                            transformer.impedancePercent
-                                ?.let {
-                                    "%.2f %%".format(it)
-                                }
-                                ?: "DATA REQUIRED"
-                        }"
-                    )
-
-                    Text(
-                        text =
-                            "Source: ${
-                                transformer.sourceUrl
-                                    ?: transformer.catalogName
-                            }",
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodySmall
-                    )
-                }
-            }
-        }
-
-        // ========================================================
-        // EEHC STANDARD
-        // ========================================================
-
-        if (
-            transformerSource ==
-            TransformerSource.EEHC_STANDARD
-        ) {
-
-            HorizontalDivider()
-
-            Text(
-                text =
-                    "EEHC Standard Transformer Rating",
-                style =
-                    MaterialTheme
-                        .typography
-                        .titleMedium
-            )
-
-            if (
-                recommendedStandard != null
-            ) {
-
-                Text(
-                    "Recommended rating: %.0f kVA"
-                        .format(
-                            recommendedStandard.ratingKVA
-                        )
-                )
-
-                Text(
-                    "Reference %Z: %.2f %%"
-                        .format(
-                            recommendedStandard
-                                .referenceImpedancePercent
-                        )
-                )
-            }
-
-            TransformerDropdown(
-                expanded =
-                    standardMenuExpanded,
-
-                onExpandedChange = {
-                    standardMenuExpanded =
-                        !standardMenuExpanded
-                },
-
-                title =
-                    selectedStandardTransformer
-                        ?.let {
-                            "${it.ratingKVA.toInt()} kVA - " +
-                                "Reference %Z " +
-                                "%.1f %%"
-                                    .format(
-                                        it.referenceImpedancePercent
-                                    )
-                        }
-                        ?: "Select standard rating"
-            ) {
-
-                standardTransformers.forEach {
-                    transformer ->
-
-                    DropdownMenuItem(
-                        text = {
-
-                            Text(
-                                "${transformer.ratingKVA.toInt()} kVA - " +
-                                    "%Z " +
-                                    "%.1f %%"
-                                        .format(
-                                            transformer
-                                                .referenceImpedancePercent
-                                        )
+                        "Transformer %Z: " +
+                            (
+                                transformer
+                                    .impedancePercent
+                                    ?.let {
+                                        "%.2f %%".format(it)
+                                    }
+                                    ?: "DATA REQUIRED"
                             )
-                        },
+                    )
 
+                    Button(
                         onClick = {
 
-                            selectedStandardTransformer =
-                                transformer
-
-                            standardMenuExpanded =
-                                false
-                        }
-                    )
-                }
-            }
-
-            Text(
-                text =
-                    "Standard: EEHC EDMS-08-100-4",
-                style =
-                    MaterialTheme
-                        .typography
-                        .bodySmall
-            )
-
-            Text(
-                text =
-                    "Reference values are not manufacturer " +
-                        "nameplate data.",
-                style =
-                    MaterialTheme
-                        .typography
-                        .bodySmall
-            )
-
-            Text(
-                text =
-                    "Final short-circuit design must use " +
-                        "the actual transformer %Z.",
-                style =
-                    MaterialTheme
-                        .typography
-                        .bodySmall
-            )
-        }
-
-        // ========================================================
-        // NAMEPLATE
-        // ========================================================
-
-        if (
-            transformerSource ==
-            TransformerSource.NAMEPLATE
-        ) {
-
-            HorizontalDivider()
-
-            Text(
-                text =
-                    "Existing Transformer / Nameplate",
-                style =
-                    MaterialTheme
-                        .typography
-                        .titleMedium
-            )
-
-            OutlinedTextField(
-                value = nameplateKVA,
-                onValueChange = {
-                    nameplateKVA = it
-                },
-                label = {
-                    Text(
-                        "Transformer Rating (kVA)"
-                    )
-                },
-                modifier =
-                    Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = nameplateVoltage,
-                onValueChange = {
-                    nameplateVoltage = it
-                },
-                label = {
-                    Text(
-                        "LV Voltage (V)"
-                    )
-                },
-                modifier =
-                    Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = nameplateImpedance,
-                onValueChange = {
-                    nameplateImpedance = it
-                },
-                label = {
-                    Text(
-                        "Actual Transformer Impedance (%Z)"
-                    )
-                },
-                modifier =
-                    Modifier.fillMaxWidth()
-            )
-
-            Text(
-                text =
-                    "All three values must come from the actual " +
-                        "transformer nameplate or verified " +
-                        "manufacturer technical data."
-            )
-        }
-
-        // ========================================================
-        // CALCULATE
-        // ========================================================
-
-        Button(
-            onClick = {
-
-                when (transformerSource) {
-
-                    TransformerSource.VERIFIED_CATALOG -> {
-
-                        val transformer =
-                            selectedCatalogTransformer
-
-                        if (transformer == null) {
-
-                            resultText =
-                                "DATA REQUIRED\n\n" +
-                                    "Select a verified manufacturer " +
-                                    "transformer before calculation."
-
-                            ratedCurrentA = 0.0
-
-                        } else {
-
                             val z =
-                                transformer.impedancePercent
+                                transformer
+                                    .impedancePercent
 
                             if (
-                                transformer.ratedPowerKVA <= 0.0 ||
-                                transformer.secondaryVoltageV <= 0.0 ||
                                 z == null ||
                                 z <= 0.0
                             ) {
@@ -1001,128 +887,245 @@ fun ShortCircuitScreen(
                                 resultText =
                                     "DATA REQUIRED\n\n" +
                                         "The selected manufacturer " +
-                                        "transformer does not have " +
-                                        "complete verified impedance data."
+                                        "transformer has no verified " +
+                                        "transformer %Z."
 
-                                ratedCurrentA = 0.0
-
-                            } else {
-
-                                calculateShortCircuit(
-                                    kva =
-                                        transformer.ratedPowerKVA,
-
-                                    voltageV =
-                                        transformer.secondaryVoltageV,
-
-                                    impedancePercent =
-                                        z,
-
-                                    referenceMode =
-                                        false
-                                )
+                                return@Button
                             }
-                        }
-                    }
 
-                    TransformerSource.EEHC_STANDARD -> {
-
-                        val transformer =
-                            selectedStandardTransformer
-
-                        if (transformer == null) {
-
-                            resultText =
-                                "DATA REQUIRED\n\n" +
-                                    "Select an EEHC standard " +
-                                    "transformer rating."
-
-                            ratedCurrentA = 0.0
-
-                        } else {
-
-                            calculateShortCircuit(
+                            calculate(
                                 kva =
-                                    transformer.ratingKVA,
+                                    transformer
+                                        .ratedPowerKVA,
 
                                 voltageV =
-                                    transformer.secondaryVoltageV,
+                                    transformer
+                                        .secondaryVoltageV,
 
                                 impedancePercent =
-                                    transformer.referenceImpedancePercent,
+                                    z,
 
                                 referenceMode =
-                                    true
+                                    false
                             )
-                        }
-                    }
+                        },
 
-                    TransformerSource.NAMEPLATE -> {
+                        modifier =
+                            Modifier.fillMaxWidth()
+                    ) {
 
-                        val kva =
-                            nameplateKVA
-                                .toDoubleOrNull()
-                                ?.takeIf {
-                                    it > 0.0
-                                }
-
-                        val voltageV =
-                            nameplateVoltage
-                                .toDoubleOrNull()
-                                ?.takeIf {
-                                    it > 0.0
-                                }
-
-                        val z =
-                            nameplateImpedance
-                                .toDoubleOrNull()
-                                ?.takeIf {
-                                    it > 0.0
-                                }
-
-                        if (
-                            kva == null ||
-                            voltageV == null ||
-                            z == null
-                        ) {
-
-                            resultText =
-                                "DATA REQUIRED\n\n" +
-                                    "Please provide:\n\n" +
-                                    "• Transformer rating\n" +
-                                    "• LV voltage\n" +
-                                    "• Actual transformer %Z\n\n" +
-                                    "No engineering value was assumed."
-
-                            ratedCurrentA = 0.0
-
-                        } else {
-
-                            calculateShortCircuit(
-                                kva = kva,
-                                voltageV = voltageV,
-                                impedancePercent = z,
-                                referenceMode = false
-                            )
-                        }
+                        Text(
+                            "Calculate Short Circuit"
+                        )
                     }
                 }
-            },
-
-            modifier =
-                Modifier.fillMaxWidth()
-        ) {
-
-            Text(
-                "Calculate & Save Short Circuit"
-            )
+            }
         }
 
-        // ========================================================
-        // RESULT
-        // ========================================================
+        if (
+            transformerSource ==
+            TransformerSource.STANDARD_RATING
+        ) {
 
-        if (resultText.isNotBlank()) {
+            OutlinedTextField(
+                value =
+                    nameplateImpedance,
+
+                onValueChange = {
+                    nameplateImpedance = it
+                },
+
+                label = {
+                    Text(
+                        "Actual Transformer %Z"
+                    )
+                },
+
+                supportingText = {
+                    Text(
+                        "Enter the %Z from transformer nameplate " +
+                            "or verified technical data."
+                    )
+                },
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                singleLine = true
+            )
+
+            Button(
+                onClick = {
+
+                    val transformer =
+                        selectedStandardTransformer
+
+                    val z =
+                        parsePositive(
+                            nameplateImpedance
+                        )
+
+                    if (
+                        transformer == null ||
+                        z == null
+                    ) {
+
+                        resultText =
+                            "DATA REQUIRED\n\n" +
+                                "Select transformer rating and " +
+                                "enter actual transformer %Z."
+
+                        return@Button
+                    }
+
+                    calculate(
+                        kva =
+                            transformer.ratedPowerKVA,
+
+                        voltageV =
+                            transformer.secondaryVoltageV,
+
+                        impedancePercent =
+                            z,
+
+                        referenceMode =
+                            true
+                    )
+                },
+
+                modifier =
+                    Modifier.fillMaxWidth()
+            ) {
+
+                Text(
+                    "Calculate Short Circuit"
+                )
+            }
+        }
+
+        if (
+            transformerSource ==
+            TransformerSource.NAMEPLATE
+        ) {
+
+            OutlinedTextField(
+                value =
+                    nameplateKVA,
+
+                onValueChange = {
+                    nameplateKVA = it
+                },
+
+                label = {
+                    Text(
+                        "Transformer Rating (kVA)"
+                    )
+                },
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value =
+                    nameplateVoltage,
+
+                onValueChange = {
+                    nameplateVoltage = it
+                },
+
+                label = {
+                    Text(
+                        "LV Voltage (V)"
+                    )
+                },
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value =
+                    nameplateImpedance,
+
+                onValueChange = {
+                    nameplateImpedance = it
+                },
+
+                label = {
+                    Text(
+                        "Transformer %Z"
+                    )
+                },
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                singleLine = true
+            )
+
+            Button(
+                onClick = {
+
+                    val kva =
+                        parsePositive(
+                            nameplateKVA
+                        )
+
+                    val voltage =
+                        parsePositive(
+                            nameplateVoltage
+                        )
+
+                    val z =
+                        parsePositive(
+                            nameplateImpedance
+                        )
+
+                    if (
+                        kva == null ||
+                        voltage == null ||
+                        z == null
+                    ) {
+
+                        resultText =
+                            "DATA REQUIRED\n\n" +
+                                "Enter transformer kVA, LV voltage " +
+                                "and actual transformer %Z."
+
+                        return@Button
+                    }
+
+                    calculate(
+                        kva = kva,
+                        voltageV = voltage,
+                        impedancePercent = z,
+                        referenceMode = false
+                    )
+                },
+
+                modifier =
+                    Modifier.fillMaxWidth()
+            ) {
+
+                Text(
+                    "Calculate Short Circuit"
+                )
+            }
+        }
+
+        Spacer(
+            modifier =
+                Modifier.height(8.dp)
+        )
+
+        if (
+            resultText.isNotBlank()
+        ) {
 
             HorizontalDivider()
 
@@ -1135,91 +1138,12 @@ fun ShortCircuitScreen(
             )
         }
 
-        // ========================================================
-        // PROJECT RESULT
-        // ========================================================
-
-        HorizontalDivider()
-
-        Text(
-            text =
-                "Current Project Result",
-            style =
-                MaterialTheme
-                    .typography
-                    .titleMedium
-        )
-
-        Text(
-            "Transformer: %.0f kVA"
-                .format(
-                    ProjectManager
-                        .calculation
-                        .transformerKVA
-                )
-        )
-
-        Text(
-            "Transformer %Z: ${
-                if (
-                    ProjectManager
-                        .calculation
-                        .transformerImpedancePercent >
-                    0.0
-                ) {
-
-                    "%.2f %%".format(
-                        ProjectManager
-                            .calculation
-                            .transformerImpedancePercent
-                    )
-
-                } else {
-
-                    "N/A - Actual Data Required"
-                }
-            }"
-        )
-
-        Text(
-            "Voltage: %.0f V"
-                .format(
-                    ProjectManager
-                        .calculation
-                        .voltageV
-                )
-        )
-
-        Text(
-            "Transformer Rated Current: %.2f A"
-                .format(
-                    ratedCurrentA
-                )
-        )
-
-        Text(
-            "Short Circuit: %.3f kA"
-                .format(
-                    ProjectManager
-                        .calculation
-                        .shortCircuitKA
-                )
-        )
-
-        Text(
-            "Design Status: ${
-                ProjectManager
-                    .calculation
-                    .designStatus
-            }"
-        )
-
         Spacer(
             modifier =
-                Modifier.height(10.dp)
+                Modifier.height(16.dp)
         )
 
-        Button(
+        OutlinedButton(
             onClick = onBack,
             modifier =
                 Modifier.fillMaxWidth()
@@ -1246,19 +1170,22 @@ private fun TransformerDropdown(
     ) {
 
         OutlinedButton(
-            onClick = onExpandedChange,
+            onClick =
+                onExpandedChange,
+
             modifier =
                 Modifier.fillMaxWidth()
         ) {
 
             Text(
-                text = title
+                title
             )
         }
 
         DropdownMenu(
             expanded = expanded,
-            onDismissRequest = onExpandedChange
+            onDismissRequest =
+                onExpandedChange
         ) {
 
             content()
