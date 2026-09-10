@@ -21,10 +21,7 @@ import java.util.UUID
  *     ↓
  * LOAD
  *
- * The electrical system voltage and operating frequency
- * are independent properties.
- *
- * Supported frequencies:
+ * Supported system frequencies:
  * - 50 Hz
  * - 60 Hz
  */
@@ -62,9 +59,6 @@ enum class NodeStatus {
 
 /**
  * Supported electrical system frequency.
- *
- * 50 Hz is the default for compatibility with the current
- * Egyptian-market catalog data.
  */
 enum class DistributionFrequency(
     val valueHz: Double,
@@ -95,50 +89,49 @@ data class DistributionLoad(
     var quantity: Int = 1,
 
     /**
-     * Unit load in kW
+     * Unit load in kW.
      */
     var unitKW: Double = 0.0,
 
     /**
-     * Power factor
+     * Power factor.
      */
     var powerFactor: Double = 0.9,
 
     /**
-     * Demand factor
-     * Typical range 0.0 - 1.0
+     * Demand factor.
      */
     var demandFactor: Double = 1.0,
 
     /**
-     * Phase assignment
+     * Phase assignment.
      */
     var phase: PhaseType = PhaseType.THREE_PHASE,
 
     /**
-     * Optional circuit number
+     * Optional circuit number.
      */
     var circuitNumber: String = "",
 
     /**
-     * Optional panel name
+     * Optional panel name.
      */
     var panelName: String = "",
 
     /**
-     * Load voltage
+     * Load voltage.
      */
     var voltage: Double = 400.0,
 
     /**
-     * Optional motor information
+     * Optional motor information.
      */
     var isMotor: Boolean = false,
 
     var motorEfficiency: Double = 0.9,
 
     /**
-     * Starting current multiplier
+     * Starting current multiplier.
      */
     var startingCurrentMultiplier: Double = 6.0
 ) {
@@ -167,9 +160,6 @@ data class DistributionLoad(
 
 /**
  * Feeder design information.
- *
- * This information is filled automatically by the engineering
- * calculation engine.
  */
 data class FeederDesign(
 
@@ -216,12 +206,6 @@ data class FeederDesign(
 
 /**
  * Distribution node.
- *
- * Each node can have:
- * - parent
- * - children
- * - loads
- * - feeder
  */
 data class DistributionNode(
 
@@ -233,8 +217,6 @@ data class DistributionNode(
 
     /**
      * Parent node ID.
-     *
-     * Transformer root has null parent.
      */
     var parentId: String? = null,
 
@@ -303,8 +285,9 @@ data class DistributionNode(
 /**
  * Complete distribution system.
  *
- * Frequency is stored at system level because all nodes
- * belong to the same electrical system.
+ * IMPORTANT:
+ * `nodes` remains before `frequency` to preserve
+ * compatibility with existing positional constructors.
  */
 data class DistributionSystem(
 
@@ -315,18 +298,16 @@ data class DistributionSystem(
 
     var projectName: String = "",
 
+    var nodes: MutableList<DistributionNode> =
+        mutableListOf(),
+
     /**
      * Electrical system frequency.
      *
-     * Supported:
-     * - 50 Hz
-     * - 60 Hz
+     * Default = 50 Hz.
      */
     var frequency: DistributionFrequency =
-        DistributionFrequency.HZ_50,
-
-    var nodes: MutableList<DistributionNode> =
-        mutableListOf()
+        DistributionFrequency.HZ_50
 ) {
 
     /**
@@ -352,7 +333,8 @@ data class DistributionSystem(
         node: DistributionNode
     ): Boolean {
 
-        if (nodes.any {
+        if (
+            nodes.any {
                 it.id == node.id
             }
         ) {
@@ -507,7 +489,7 @@ data class DistributionSystem(
 
 
     /**
-     * Calculate total connected load of entire system.
+     * Calculate total connected load.
      */
     fun totalConnectedLoadKW(): Double {
 
@@ -568,7 +550,7 @@ data class DistributionSystem(
 
 
         /*
-         * Frequency check
+         * Frequency validation.
          */
         if (
             frequency != DistributionFrequency.HZ_50 &&
@@ -582,7 +564,7 @@ data class DistributionSystem(
 
 
         /*
-         * Transformer check
+         * Transformer check.
          */
         val transformers =
             nodes.filter {
@@ -606,7 +588,7 @@ data class DistributionSystem(
 
 
         /*
-         * Root check
+         * Root check.
          */
         val roots =
             nodes.filter {
@@ -622,7 +604,7 @@ data class DistributionSystem(
 
 
         /*
-         * Orphan nodes
+         * Orphan nodes.
          */
         nodes.forEach { node ->
 
@@ -641,7 +623,7 @@ data class DistributionSystem(
 
 
         /*
-         * Cycle detection
+         * Cycle detection.
          */
         nodes.forEach { node ->
 
@@ -676,7 +658,7 @@ data class DistributionSystem(
 
 
         /*
-         * Hierarchy validation
+         * Hierarchy validation.
          */
         nodes.forEach { node ->
 
@@ -792,8 +774,6 @@ data class DistributionSystem(
 
     /**
      * Return nodes in hierarchy order.
-     *
-     * Useful for SLD generation.
      */
     fun hierarchyOrder():
             List<DistributionNode> {
@@ -867,7 +847,7 @@ data class SldModel(
 
 
 /**
- * Generate SLD model automatically from distribution hierarchy.
+ * Generate SLD model automatically.
  */
 object SldGenerator {
 
@@ -1101,35 +1081,18 @@ object DistributionNodeFactory {
 
 /**
  * Example builder.
- *
- * Creates:
- *
- * Transformer
- *      ↓
- * MDB
- *      ↓
- * SMDB
- *      ↓
- * DB
- *      ↓
- * Final Circuit
- *      ↓
- * Load
  */
 object DistributionExample {
 
     fun create(
-        frequency:
-        DistributionFrequency =
+        frequency: DistributionFrequency =
             DistributionFrequency.HZ_50
     ): DistributionSystem {
 
         val system =
             DistributionSystem(
-
                 name =
                     "Main Electrical Distribution",
-
                 frequency =
                     frequency
             )
