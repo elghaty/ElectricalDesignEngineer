@@ -35,6 +35,7 @@ package com.electricaldesignengineer.app
  * - ProfessionalEngineeringCore is the SINGLE calculation core.
  * - No EngineeringDesignEngine.
  * - No duplicate demand calculation.
+ * - No duplicate power-factor calculation.
  * - No invented transformer impedance.
  * - No invented short-circuit current.
  * - No forced 400 V.
@@ -357,13 +358,6 @@ object AutoDesignService {
 
             // ----------------------------------------------------
             // 2. Calculate TOTAL DEMAND through the Core
-            //
-            // IMPORTANT:
-            // Do NOT use:
-            // system.totalDemandLoadKVA()
-            //
-            // DistributionModel must not be the engineering
-            // calculation engine.
             // ----------------------------------------------------
 
             val loadCalculation =
@@ -612,13 +606,6 @@ object AutoDesignService {
 
     // ============================================================
     // SYSTEM LOAD CALCULATION
-    //
-    // THIS IS THE IMPORTANT ARCHITECTURAL CHANGE.
-    //
-    // All demand/load/kVA/current calculations are delegated to
-    // ProfessionalEngineeringCore.
-    //
-    // DistributionModel is data only.
     // ============================================================
 
     private fun calculateSystemLoadCalculation(
@@ -630,29 +617,6 @@ object AutoDesignService {
                 .flatMap { node ->
                     node.loads
                 }
-
-        if (allLoads.isEmpty()) {
-
-            return ProfessionalEngineeringCore.calculateLoads(
-                loads = emptyList(),
-                system =
-                    ProfessionalEngineeringCore.SystemInput(
-                        voltageV =
-                            system.getTransformer()
-                                ?.voltage
-                                ?.takeIf { it > 0.0 }
-                                ?: 0.0,
-
-                        frequencyHz =
-                            system.frequencyHz(),
-
-                        phaseSystem =
-                            ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE,
-
-                        powerFactor = 1.0
-                    )
-            )
-        }
 
         val systemVoltage =
             system.getTransformer()
@@ -1331,109 +1295,103 @@ object AutoDesignService {
             return 0.0
         }
 
-        val powerFactor =
-            determinePowerFactor(node)
+        /*
+         * The aggregate power factor is obtained from the
+         * ProfessionalEngineeringCore.
+         *
+         * No PF formula is implemented in AutoDesignService.
+         */
+        val loadCalculation =
+            ProfessionalEngineeringCore.calculateLoads(
+                loads = loadInputs,
+                system =
+                    ProfessionalEngineeringCore.SystemInput(
+                        voltageV = node.voltage,
+                        frequencyHz = frequencyHz,
+                        phaseSystem = phaseSystem,
+                        powerFactor = 1.0
+                    )
+            )
 
-        if (powerFactor <= 0.0) {
+        if (
+            loadCalculation.status != EngineeringStatus.PASS ||
+            loadCalculation.currentA <= 0.0
+        ) {
             return 0.0
         }
 
-        val systemInput =
-            ProfessionalEngineeringCore.SystemInput(
-                voltageV = node.voltage,
-
-                frequencyHz = frequencyHz,
-
-                phaseSystem = phaseSystem,
-
-                powerFactor =
-                    powerFactor
-            )
-
-        val result =
-            ProfessionalEngineeringCore.calculateLoads(
-                loads = loadInputs,
-                system = systemInput
-            )
-
-        return result.currentA
+        return loadCalculation.currentA
     }
 
     // ============================================================
     // POWER FACTOR
     //
-    // NOTE:
-    // This is retained temporarily for compatibility with the
-    // current data model.
+    // IMPORTANT:
+    // There is NO independent PF calculation here.
     //
-    // The next cleanup step should move aggregate PF calculation
-    // completely into ProfessionalEngineeringCore as well.
+    // ProfessionalEngineeringCore is the single calculation
+    // authority and returns the effective power factor as part
+    // of LoadCalculationResult.
     // ============================================================
 
     private fun determinePowerFactor(
         node: DistributionNode
     ): Double {
 
-        val validLoads =
-            node.loads.filter { load ->
-
-                load.quantity > 0 &&
-                        load.unitKW >= 0.0 &&
-                        load.demandFactor > 0.0 &&
-                        load.powerFactor > 0.0
-            }
-
-        if (validLoads.isEmpty()) {
+        if (node.voltage <= 0.0) {
             return 0.0
         }
 
-        val weightedPower =
-            validLoads.sumOf {
-                it.connectedKW() *
-                        it.demandFactor.coerceIn(
-                            0.0,
-                            1.0
-                        )
+        val loadInputs =
+            node.loads.map { load ->
+
+                ProfessionalEngineeringCore.LoadInput(
+                    name = load.name,
+                    quantity = load.quantity.toDouble(),
+                    unitPowerKW = load.unitKW,
+                    demandFactor = load.demandFactor,
+                    powerFactor = load.powerFactor
+                )
             }
 
-        if (weightedPower <= 0.0) {
-
-            val averagePF =
-                validLoads
-                    .map {
-                        it.powerFactor
-                    }
-                    .average()
-
-            return averagePF
-                .takeIf {
-                    !it.isNaN()
-                }
-                ?.coerceIn(
-                    0.1,
-                    1.0
-                )
-                ?: 0.0
+        if (loadInputs.isEmpty()) {
+            return 0.0
         }
 
-        val weightedPF =
-            validLoads.sumOf { load ->
+        val phaseSystem =
+            when (node.phaseType) {
 
-                (
-                    load.connectedKW() *
-                            load.demandFactor.coerceIn(
-                                0.0,
-                                1.0
-                            )
-                    ) *
-                        load.powerFactor
+                PhaseType.THREE_PHASE ->
+                    ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
 
-            } / weightedPower
+                PhaseType.SINGLE_PHASE_L1,
+                PhaseType.SINGLE_PHASE_L2,
+                PhaseType.SINGLE_PHASE_L3 ->
+                    ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
+            }
 
-        return weightedPF.coerceIn(
-            0.1,
-            1.0
-        )
+        val result =
+            ProfessionalEngineeringCore.calculateLoads(
+                loads = loadInputs,
+                system =
+                    ProfessionalEngineeringCore.SystemInput(
+                        voltageV = node.voltage,
+                        frequencyHz = 50.0,
+                        phaseSystem = phaseSystem,
+                        powerFactor = 1.0
+                    )
+            )
+
+        if (result.status != EngineeringStatus.PASS) {
+            return 0.0
+        }
+
+        return result.effectivePowerFactor
+            .takeIf {
+                it > 0.0 && !it.isNaN()
+            }
+            ?.coerceIn(0.1, 1.0)
+            ?: 0.0
     }
 
     // ============================================================
