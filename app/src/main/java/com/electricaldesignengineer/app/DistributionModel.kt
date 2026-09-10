@@ -320,11 +320,6 @@ data class DistributionSystem(
     /**
      * Change system frequency.
      */
-    fun setFrequency(
-        newFrequency: DistributionFrequency
-    ) {
-        frequency = newFrequency
-    }
 
     /**
      * Add node to system.
