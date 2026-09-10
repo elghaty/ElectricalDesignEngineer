@@ -68,6 +68,16 @@ import kotlin.math.tan
   )
   
   // ============================================================
+  // INTERNAL VALIDATION
+  // ============================================================
+  
+  private fun isValidFinite(value: Double): Boolean =
+  !value.isNaN() && !value.isInfinite()
+  
+  private fun isPositiveFinite(value: Double): Boolean =
+  isValidFinite(value) && value > 0.0
+  
+  // ============================================================
   // LOAD CALCULATION
   // ============================================================
   
@@ -97,50 +107,59 @@ import kotlin.math.tan
    val checks = mutableListOf<EngineeringCheck>()
 
  if (loads.isEmpty()) {
+     val dataCheck = EngineeringCheck(
+         name = "Load data",
+         status = EngineeringStatus.DATA_REQUIRED,
+         message = "At least one electrical load is required before engineering calculation."
+     )
+
      return LoadCalculationResult(
          connectedKW = 0.0,
          demandKW = 0.0,
          demandKVA = 0.0,
          currentA = 0.0,
          effectivePowerFactor = 1.0,
-         checks = emptyList(),
+         checks = listOf(dataCheck),
          trace = EngineeringTrace(
              calculationName = "LOAD CALCULATION",
              standard = null,
-             checks = emptyList(),
+             checks = listOf(dataCheck),
              warnings = listOf(
-                 "No loads have been entered."
+                 "No loads have been entered. The calculation is not considered successful."
              )
          )
      )
  }
 
- if (system.voltageV <= 0.0) {
+ if (!isPositiveFinite(system.voltageV)) {
      checks += EngineeringCheck(
          name = "System voltage",
          status = EngineeringStatus.FAIL,
          calculatedValue = system.voltageV,
          unit = "V",
-         message = "System voltage must be greater than zero."
+         message = "System voltage must be a valid value greater than zero."
      )
  }
 
- if (system.frequencyHz <= 0.0) {
+ if (!isPositiveFinite(system.frequencyHz)) {
      checks += EngineeringCheck(
          name = "Frequency",
          status = EngineeringStatus.FAIL,
          calculatedValue = system.frequencyHz,
          unit = "Hz",
-         message = "Frequency must be greater than zero."
+         message = "Frequency must be a valid value greater than zero."
      )
  }
 
- if (system.powerFactor !in 0.01..1.0) {
+ if (
+     !isValidFinite(system.powerFactor) ||
+     system.powerFactor !in 0.01..1.0
+ ) {
      checks += EngineeringCheck(
          name = "Power factor",
          status = EngineeringStatus.FAIL,
          calculatedValue = system.powerFactor,
-         message = "Power factor must be between 0.01 and 1.00."
+         message = "Power factor must be a finite value between 0.01 and 1.00."
      )
  }
 
@@ -154,40 +173,46 @@ import kotlin.math.tan
          )
      }
 
-     if (load.quantity <= 0.0) {
+     if (!isPositiveFinite(load.quantity)) {
          checks += EngineeringCheck(
              name = "Load quantity: ${load.name}",
              status = EngineeringStatus.FAIL,
              calculatedValue = load.quantity,
-             message = "Load quantity must be greater than zero."
+             message = "Load quantity must be a finite value greater than zero."
          )
      }
 
-     if (load.unitPowerKW <= 0.0) {
+     if (!isPositiveFinite(load.unitPowerKW)) {
          checks += EngineeringCheck(
              name = "Unit power: ${load.name}",
              status = EngineeringStatus.FAIL,
              calculatedValue = load.unitPowerKW,
              unit = "kW",
-             message = "Unit power must be greater than zero."
+             message = "Unit power must be a finite value greater than zero."
          )
      }
 
-     if (load.demandFactor !in 0.0..1.0) {
+     if (
+         !isValidFinite(load.demandFactor) ||
+         load.demandFactor !in 0.0..1.0
+     ) {
          checks += EngineeringCheck(
              name = "Demand factor: ${load.name}",
              status = EngineeringStatus.FAIL,
              calculatedValue = load.demandFactor,
-             message = "Demand factor must be between 0.00 and 1.00."
+             message = "Demand factor must be a finite value between 0.00 and 1.00."
          )
      }
 
-     if (load.powerFactor !in 0.01..1.0) {
+     if (
+         !isValidFinite(load.powerFactor) ||
+         load.powerFactor !in 0.01..1.0
+     ) {
          checks += EngineeringCheck(
              name = "Power factor: ${load.name}",
              status = EngineeringStatus.FAIL,
              calculatedValue = load.powerFactor,
-             message = "Power factor must be between 0.01 and 1.00."
+             message = "Power factor must be a finite value between 0.01 and 1.00."
          )
      }
  }
@@ -205,7 +230,7 @@ import kotlin.math.tan
              standard = null,
              checks = checks,
              warnings = listOf(
-                 "Invalid load data must be corrected before engineering calculation."
+                 "Invalid load/system data must be corrected before engineering calculation."
              )
          )
      )
@@ -229,7 +254,7 @@ import kotlin.math.tan
                      (
                          1.0 /
                                  (load.powerFactor * load.powerFactor)
-                         ) - 1.0
+                     ) - 1.0
                  )
 
      connectedKW += connectedKWForLoad
@@ -303,7 +328,10 @@ import kotlin.math.tan
   voltageV: Double
   ): Double {
   
-   if (kva <= 0.0 || voltageV <= 0.0) {
+   if (
+     !isPositiveFinite(kva) ||
+     !isPositiveFinite(voltageV)
+ ) {
      return 0.0
  }
 
@@ -317,7 +345,10 @@ import kotlin.math.tan
   voltageV: Double
   ): Double {
   
-   if (kva <= 0.0 || voltageV <= 0.0) {
+   if (
+     !isPositiveFinite(kva) ||
+     !isPositiveFinite(voltageV)
+ ) {
      return 0.0
  }
 
@@ -345,35 +376,11 @@ import kotlin.math.tan
   val soilCorrectionFactor: Double,
   val maximumVoltageDropPercent: Double,
   val maximumParallelRuns: Int = 8,
-  
-   /*
-  * These two factors are optional so all existing callers
-  * remain source-compatible.
-  *
-  * They must be supplied from the applicable cable standard
-  * / manufacturer data when temperature or loaded-conductor
-  * corrections are required.
-  *
-  * Default = 1.0 preserves the previous behavior.
-  */
- val ambientTemperatureCorrectionFactor: Double = 1.0,
- val loadedConductorsCorrectionFactor: Double = 1.0,
-
- /*
-  * Optional short-circuit thermal verification.
-  *
-  * If both shortCircuitCurrentKA and shortCircuitDurationS
-  * are supplied, and adiabaticK is supplied, the core performs
-  * the adiabatic thermal withstand check:
-  *
-  *     I²t <= (kS)²
-  *
-  * No generic k value is invented.
-  */
- val shortCircuitCurrentKA: Double? = null,
- val shortCircuitDurationS: Double = 1.0,
- val adiabaticK: Double? = null
-  
+  val ambientTemperatureCorrectionFactor: Double = 1.0,
+  val loadedConductorsCorrectionFactor: Double = 1.0,
+  val shortCircuitCurrentKA: Double? = null,
+  val shortCircuitDurationS: Double = 1.0,
+  val adiabaticK: Double? = null
   )
   
   data class CableData(
@@ -429,39 +436,42 @@ import kotlin.math.tan
      )
  }
 
- if (input.designCurrentA <= 0.0) {
+ if (!isPositiveFinite(input.designCurrentA)) {
      fail(
          "Design current",
          input.designCurrentA,
          "A",
-         "Design current must be greater than zero."
+         "Design current must be a finite value greater than zero."
      )
  }
 
- if (input.lengthM <= 0.0) {
+ if (!isPositiveFinite(input.lengthM)) {
      fail(
          "Cable length",
          input.lengthM,
          "m",
-         "Cable length must be greater than zero."
+         "Cable length must be a finite value greater than zero."
      )
  }
 
- if (input.voltageV <= 0.0) {
+ if (!isPositiveFinite(input.voltageV)) {
      fail(
          "Voltage",
          input.voltageV,
          "V",
-         "Voltage must be greater than zero."
+         "Voltage must be a finite value greater than zero."
      )
  }
 
- if (input.powerFactor !in 0.01..1.0) {
+ if (
+     !isValidFinite(input.powerFactor) ||
+     input.powerFactor !in 0.01..1.0
+ ) {
      fail(
          "Power factor",
          input.powerFactor,
          "",
-         "Power factor must be between 0.01 and 1.00."
+         "Power factor must be a finite value between 0.01 and 1.00."
      )
  }
 
@@ -474,9 +484,7 @@ import kotlin.math.tan
      )
  }
 
- if (input.ambientTemperatureC.isNaN() ||
-     input.ambientTemperatureC.isInfinite()
- ) {
+ if (!isValidFinite(input.ambientTemperatureC)) {
      fail(
          "Ambient temperature",
          null,
@@ -485,16 +493,17 @@ import kotlin.math.tan
      )
  }
 
- if (input.maximumVoltageDropPercent <= 0.0) {
+ if (!isPositiveFinite(input.maximumVoltageDropPercent)) {
      fail(
          "Maximum voltage drop",
          input.maximumVoltageDropPercent,
          "%",
-         "Voltage-drop limit must be greater than zero."
+         "Voltage-drop limit must be a finite value greater than zero."
      )
  }
 
  if (
+     !isValidFinite(input.groupingFactor) ||
      input.groupingFactor <= 0.0 ||
      input.groupingFactor > 1.0
  ) {
@@ -502,11 +511,12 @@ import kotlin.math.tan
          "Grouping factor",
          input.groupingFactor,
          "",
-         "Grouping factor must be greater than 0 and not greater than 1."
+         "Grouping factor must be a finite value greater than 0 and not greater than 1."
      )
  }
 
  if (
+     !isValidFinite(input.thermalInsulationFactor) ||
      input.thermalInsulationFactor <= 0.0 ||
      input.thermalInsulationFactor > 1.0
  ) {
@@ -514,11 +524,12 @@ import kotlin.math.tan
          "Thermal insulation factor",
          input.thermalInsulationFactor,
          "",
-         "Thermal insulation factor must be greater than 0 and not greater than 1."
+         "Thermal insulation factor must be a finite value greater than 0 and not greater than 1."
      )
  }
 
  if (
+     !isValidFinite(input.soilCorrectionFactor) ||
      input.soilCorrectionFactor <= 0.0 ||
      input.soilCorrectionFactor > 1.0
  ) {
@@ -526,7 +537,7 @@ import kotlin.math.tan
          "Soil correction factor",
          input.soilCorrectionFactor,
          "",
-         "Soil correction factor must be greater than 0 and not greater than 1."
+         "Soil correction factor must be a finite value greater than 0 and not greater than 1."
      )
  }
 
@@ -540,6 +551,7 @@ import kotlin.math.tan
  }
 
  if (
+     !isValidFinite(input.ambientTemperatureCorrectionFactor) ||
      input.ambientTemperatureCorrectionFactor <= 0.0 ||
      input.ambientTemperatureCorrectionFactor > 1.0
  ) {
@@ -547,11 +559,12 @@ import kotlin.math.tan
          "Ambient temperature correction factor",
          input.ambientTemperatureCorrectionFactor,
          "",
-         "Ambient temperature correction factor must be greater than 0 and not greater than 1."
+         "Ambient temperature correction factor must be a finite value greater than 0 and not greater than 1."
      )
  }
 
  if (
+     !isValidFinite(input.loadedConductorsCorrectionFactor) ||
      input.loadedConductorsCorrectionFactor <= 0.0 ||
      input.loadedConductorsCorrectionFactor > 1.0
  ) {
@@ -559,52 +572,44 @@ import kotlin.math.tan
          "Loaded conductors correction factor",
          input.loadedConductorsCorrectionFactor,
          "",
-         "Loaded-conductor correction factor must be greater than 0 and not greater than 1."
+         "Loaded-conductor correction factor must be a finite value greater than 0 and not greater than 1."
      )
  }
 
  if (
      input.shortCircuitCurrentKA != null &&
-     (
-         input.shortCircuitCurrentKA <= 0.0 ||
-                 input.shortCircuitCurrentKA.isNaN() ||
-                 input.shortCircuitCurrentKA.isInfinite()
-         )
+     !isPositiveFinite(input.shortCircuitCurrentKA)
  ) {
      fail(
          "Short-circuit current",
          input.shortCircuitCurrentKA,
          "kA",
-         "Short-circuit current must be greater than zero."
+         "Short-circuit current must be a finite value greater than zero."
      )
  }
 
  if (
      input.shortCircuitCurrentKA != null &&
-     (
-         input.shortCircuitDurationS <= 0.0 ||
-                 input.shortCircuitDurationS.isNaN() ||
-                 input.shortCircuitDurationS.isInfinite()
-         )
+     !isPositiveFinite(input.shortCircuitDurationS)
  ) {
      fail(
          "Short-circuit duration",
          input.shortCircuitDurationS,
          "s",
-         "Short-circuit duration must be greater than zero."
+         "Short-circuit duration must be a finite value greater than zero."
      )
  }
 
  if (
      input.shortCircuitCurrentKA != null &&
      input.adiabaticK != null &&
-     input.adiabaticK <= 0.0
+     !isPositiveFinite(input.adiabaticK)
  ) {
      fail(
          "Adiabatic k factor",
          input.adiabaticK,
          "",
-         "Adiabatic k factor must be greater than zero."
+         "Adiabatic k factor must be a finite value greater than zero."
      )
  }
 
@@ -633,8 +638,10 @@ import kotlin.math.tan
          input.installationMethod
      )
          .filter {
-             it.sizeMm2 > 0.0 &&
-                     it.baseAmpacityA > 0.0 &&
+             isPositiveFinite(it.sizeMm2) &&
+                     isPositiveFinite(it.baseAmpacityA) &&
+                     isValidFinite(it.resistanceOhmPerKm) &&
+                     isValidFinite(it.reactanceOhmPerKm) &&
                      it.resistanceOhmPerKm >= 0.0 &&
                      it.reactanceOhmPerKm >= 0.0 &&
                      it.source.isNotBlank() &&
@@ -677,18 +684,12 @@ import kotlin.math.tan
  }
 
  /*
-  * The correction factors are deliberately explicit.
-  *
   * Overall correction:
   *
   * K =
   * grouping × thermal insulation × soil
   * × ambient-temperature correction
   * × loaded-conductor correction
-  *
-  * The core does not invent temperature or conductor-count
-  * correction values. Those values must come from the applicable
-  * standard / manufacturer data.
   */
  val correctionFactor =
      input.groupingFactor *
@@ -697,11 +698,6 @@ import kotlin.math.tan
              input.ambientTemperatureCorrectionFactor *
              input.loadedConductorsCorrectionFactor
 
- /*
-  * When the caller has not supplied explicit temperature/load
-  * conductor correction factors, keep the calculation backward
-  * compatible but expose the engineering limitation in trace.
-  */
  val correctionWarnings = mutableListOf<String>()
 
  if (input.ambientTemperatureCorrectionFactor == 1.0) {
@@ -735,7 +731,7 @@ import kotlin.math.tan
                      1.0 -
                              input.powerFactor *
                              input.powerFactor
-                     ).coerceAtLeast(0.0)
+                 ).coerceAtLeast(0.0)
              )
 
          val impedanceComponent =
@@ -769,15 +765,6 @@ import kotlin.math.tan
                      input.voltageV *
                      100.0
 
-         /*
-          * Optional adiabatic short-circuit check.
-          *
-          * I²t <= (kS)²
-          *
-          * For parallel identical runs the fault current is
-          * divided between the runs, so each run is checked
-          * against I_fault / runs.
-          */
          val thermalCheck: EngineeringCheck?
 
          if (
@@ -825,7 +812,6 @@ import kotlin.math.tan
              }
 
          } else {
-
              thermalCheck = null
          }
 
@@ -877,6 +863,7 @@ import kotlin.math.tan
                  buildList {
                      add(ampacityCheck)
                      add(voltageDropCheck)
+
                      if (thermalCheck != null) {
                          add(thermalCheck)
                      }
@@ -949,18 +936,7 @@ import kotlin.math.tan
   val cableAmpacityA: Double,
   val prospectiveShortCircuitKA: Double,
   val requiredPoles: Int,
-  
-   /*
-  * Optional system voltage.
-  *
-  * Existing callers remain compatible because the default
-  * value is null.
-  *
-  * When supplied, breaker rated voltage is checked against
-  * the actual system voltage.
-  */
- val systemVoltageV: Double? = null
-  
+  val systemVoltageV: Double? = null
   )
   
   data class BreakerData(
@@ -998,53 +974,33 @@ import kotlin.math.tan
   
    val checks = mutableListOf<EngineeringCheck>()
 
- if (input.designCurrentA <= 0.0) {
+ if (!isPositiveFinite(input.designCurrentA)) {
      checks += EngineeringCheck(
          name = "Design current",
          status = EngineeringStatus.FAIL,
          calculatedValue = input.designCurrentA,
          unit = "A",
-         message = "Design current must be greater than zero."
+         message = "Design current must be a finite value greater than zero."
      )
  }
 
- if (input.cableAmpacityA <= 0.0) {
+ if (!isPositiveFinite(input.cableAmpacityA)) {
      checks += EngineeringCheck(
          name = "Cable ampacity",
          status = EngineeringStatus.FAIL,
          calculatedValue = input.cableAmpacityA,
          unit = "A",
-         message = "Verified cable ampacity is required."
+         message = "Verified cable ampacity must be a finite value greater than zero."
      )
  }
 
- /*
-  * A zero fault level is not acceptable for professional
-  * breaker selection because Icu cannot be verified against
-  * a real prospective fault level.
-  */
- if (input.prospectiveShortCircuitKA <= 0.0) {
+ if (!isPositiveFinite(input.prospectiveShortCircuitKA)) {
      checks += EngineeringCheck(
          name = "Short-circuit current",
          status = EngineeringStatus.FAIL,
          calculatedValue = input.prospectiveShortCircuitKA,
          unit = "kA",
-         message =
-             "Prospective short-circuit current must be greater than zero."
-     )
- }
-
- if (
-     input.prospectiveShortCircuitKA.isNaN() ||
-     input.prospectiveShortCircuitKA.isInfinite()
- ) {
-     checks += EngineeringCheck(
-         name = "Short-circuit current validity",
-         status = EngineeringStatus.FAIL,
-         calculatedValue = input.prospectiveShortCircuitKA,
-         unit = "kA",
-         message =
-             "Prospective short-circuit current must be a finite engineering value."
+         message = "Prospective short-circuit current must be a finite value greater than zero."
      )
  }
 
@@ -1059,11 +1015,7 @@ import kotlin.math.tan
 
  if (
      input.systemVoltageV != null &&
-     (
-         input.systemVoltageV <= 0.0 ||
-                 input.systemVoltageV.isNaN() ||
-                 input.systemVoltageV.isInfinite()
-         )
+     !isPositiveFinite(input.systemVoltageV)
  ) {
      checks += EngineeringCheck(
          name = "System voltage",
@@ -1071,7 +1023,7 @@ import kotlin.math.tan
          calculatedValue = input.systemVoltageV,
          unit = "V",
          message =
-             "System voltage must be a valid value greater than zero."
+             "System voltage must be a finite value greater than zero."
      )
  }
 
@@ -1088,19 +1040,27 @@ import kotlin.math.tan
      )
  }
 
+ /*
+  * EXACT pole matching is intentional.
+  *
+  * If the design requires 3P, the core must not silently
+  * select a 4P breaker.
+  *
+  * A 4P breaker must be an explicit design requirement.
+  */
  val breakers =
      provider.availableBreakers(input.requiredPoles)
          .filter {
-             it.poles >= input.requiredPoles
+             it.poles == input.requiredPoles
          }
          .filter {
-             it.ratedCurrentA > 0.0
+             isPositiveFinite(it.ratedCurrentA)
          }
          .filter {
-             it.ratedVoltageV > 0.0
+             isPositiveFinite(it.ratedVoltageV)
          }
          .filter {
-             it.icuKA > 0.0
+             isPositiveFinite(it.icuKA)
          }
          .filter {
              it.source.isNotBlank() &&
@@ -1117,7 +1077,7 @@ import kotlin.math.tan
              name = "Breaker engineering database",
              status = EngineeringStatus.DATA_REQUIRED,
              message =
-                 "No verified breaker product data is available."
+                 "No verified breaker product data is available for the exact required pole count."
          )
 
      return BreakerDesignResult(
@@ -1141,13 +1101,6 @@ import kotlin.math.tan
      val breakingCapacity =
          breaker.icuKA >= input.prospectiveShortCircuitKA
 
-     /*
-      * Voltage compatibility is checked when the calling layer
-      * provides system voltage.
-      *
-      * The check is intentionally not invented when the old
-      * caller does not provide system voltage.
-      */
      val voltageCompatibility =
          input.systemVoltageV?.let {
              breaker.ratedVoltageV >= it
@@ -1197,6 +1150,19 @@ import kotlin.math.tan
              icuCheck
          )
 
+         resultChecks += EngineeringCheck(
+             name = "Breaker poles",
+             status = EngineeringStatus.PASS,
+             calculatedValue = breaker.poles.toDouble(),
+             requiredValue = input.requiredPoles.toDouble(),
+             message =
+                 "Breaker pole count exactly matches the design requirement.",
+             standardCode =
+                 EngineeringStandards.circuitBreakers.code,
+             dataSource =
+                 "${breaker.source} / ${breaker.revision}"
+         )
+
          if (input.systemVoltageV != null) {
 
              resultChecks += EngineeringCheck(
@@ -1234,7 +1200,9 @@ import kotlin.math.tan
                  assumptions = listOf(
                      "Basic current coordination: Ib ≤ In ≤ Iz.",
                      "Ultimate breaking capacity: Icu ≥ Ik.",
+                     "Breaker pole count must exactly match the requested design pole count.",
                      "When system voltage is supplied, breaker rated voltage is checked against it.",
+                     "Ics is checked separately by the protection stage.",
                      "Discrimination/selectivity is a separate study.",
                      "Breaker catalog data must be verified against the applicable manufacturer revision."
                  )
@@ -1248,7 +1216,7 @@ import kotlin.math.tan
          name = "Breaker selection",
          status = EngineeringStatus.FAIL,
          message =
-             "No verified breaker product satisfies the specified current, voltage and short-circuit requirements.",
+             "No verified breaker product satisfies the specified current, voltage, exact pole-count and short-circuit requirements.",
          standardCode =
              EngineeringStandards.circuitBreakers.code
      )
@@ -1306,21 +1274,11 @@ import kotlin.math.tan
   
   /**
   
-  * Calculates transformer required capacity.
-  
-  * 
-  
   * Required kVA = Demand kW / PF × (1 + margin)
   
   * 
   
-  * This function performs calculation only.
-  
-  * 
-  
-  * Actual transformer selection is performed by designTransformer()
-  
-  * using verified catalog data.
+  * This function returns the FINAL required kVA including margin.
     */
     fun requiredTransformerKVA(
     demandKW: Double,
@@ -1330,32 +1288,38 @@ import kotlin.math.tan
     
     val checks = mutableListOf<EngineeringCheck>()
     
-    if (demandKW <= 0.0) {
+    if (!isPositiveFinite(demandKW)) {
     checks += EngineeringCheck(
     name = "Transformer demand",
     status = EngineeringStatus.FAIL,
     calculatedValue = demandKW,
     unit = "kW",
-    message = "Demand power must be greater than zero."
+    message = "Demand power must be a finite value greater than zero."
     )
     }
     
-    if (powerFactor !in 0.01..1.0) {
+    if (
+    !isValidFinite(powerFactor) ||
+    powerFactor !in 0.01..1.0
+    ) {
     checks += EngineeringCheck(
     name = "Transformer power factor",
     status = EngineeringStatus.FAIL,
     calculatedValue = powerFactor,
-    message = "Power factor must be between 0.01 and 1.00."
+    message = "Power factor must be a finite value between 0.01 and 1.00."
     )
     }
     
-    if (designMarginPercent < 0.0) {
+    if (
+    !isValidFinite(designMarginPercent) ||
+    designMarginPercent < 0.0
+    ) {
     checks += EngineeringCheck(
     name = "Transformer design margin",
     status = EngineeringStatus.FAIL,
     calculatedValue = designMarginPercent,
     unit = "%",
-    message = "Design margin cannot be negative."
+    message = "Design margin must be a finite value and cannot be negative."
     )
     }
     
@@ -1389,7 +1353,7 @@ import kotlin.math.tan
     calculatedValue = requiredKVA,
     unit = "kVA",
     message =
-    "Required transformer capacity calculated from demand power, power factor and design margin.",
+    "Required transformer capacity calculated from demand, power factor and design margin.",
     standardCode =
     EngineeringStandards.transformer.code
     )
@@ -1408,7 +1372,8 @@ import kotlin.math.tan
     checks = checks,
     assumptions = listOf(
     "Transformer required capacity is calculated from active demand and operating power factor.",
-    "Design margin is explicitly supplied by the engineer.",
+    "Design margin is explicitly applied once in this calculation.",
+    "The returned requiredKVA is the final requirement including the specified margin.",
     "Actual transformer rating is selected only from verified catalog data."
     )
     )
@@ -1438,30 +1403,33 @@ import kotlin.math.tan
   
    val checks = mutableListOf<EngineeringCheck>()
 
- if (input.requiredKVA <= 0.0) {
+ if (!isPositiveFinite(input.requiredKVA)) {
      checks += EngineeringCheck(
          name = "Required transformer capacity",
          status = EngineeringStatus.FAIL,
          calculatedValue = input.requiredKVA,
          unit = "kVA",
          message =
-             "Required transformer capacity must be greater than zero."
+             "Required transformer capacity must be a finite value greater than zero."
      )
  }
 
- if (input.designMarginPercent < 0.0) {
+ if (
+     !isValidFinite(input.designMarginPercent) ||
+     input.designMarginPercent < 0.0
+ ) {
      checks += EngineeringCheck(
          name = "Design margin",
          status = EngineeringStatus.FAIL,
          calculatedValue = input.designMarginPercent,
          unit = "%",
-         message = "Design margin cannot be negative."
+         message = "Design margin must be a finite value and cannot be negative."
      )
  }
 
  if (
      input.requiredPrimaryVoltageV != null &&
-     input.requiredPrimaryVoltageV <= 0.0
+     !isPositiveFinite(input.requiredPrimaryVoltageV)
  ) {
      checks += EngineeringCheck(
          name = "Primary voltage",
@@ -1469,13 +1437,13 @@ import kotlin.math.tan
          calculatedValue = input.requiredPrimaryVoltageV,
          unit = "V",
          message =
-             "Required primary voltage must be greater than zero."
+             "Required primary voltage must be a finite value greater than zero."
      )
  }
 
  if (
      input.requiredSecondaryVoltageV != null &&
-     input.requiredSecondaryVoltageV <= 0.0
+     !isPositiveFinite(input.requiredSecondaryVoltageV)
  ) {
      checks += EngineeringCheck(
          name = "Secondary voltage",
@@ -1483,13 +1451,13 @@ import kotlin.math.tan
          calculatedValue = input.requiredSecondaryVoltageV,
          unit = "V",
          message =
-             "Required secondary voltage must be greater than zero."
+             "Required secondary voltage must be a finite value greater than zero."
      )
  }
 
  if (
      input.requiredFrequencyHz != null &&
-     input.requiredFrequencyHz <= 0.0
+     !isPositiveFinite(input.requiredFrequencyHz)
  ) {
      checks += EngineeringCheck(
          name = "Transformer frequency",
@@ -1497,7 +1465,7 @@ import kotlin.math.tan
          calculatedValue = input.requiredFrequencyHz,
          unit = "Hz",
          message =
-             "Required frequency must be greater than zero."
+             "Required frequency must be a finite value greater than zero."
      )
  }
 
@@ -1515,21 +1483,31 @@ import kotlin.math.tan
      )
  }
 
- val requiredWithMargin =
-     input.requiredKVA *
-             (1.0 + input.designMarginPercent / 100.0)
+ /*
+  * IMPORTANT:
+  *
+  * requiredKVA is treated as the FINAL required capacity.
+  *
+  * This prevents double application of the design margin when
+  * requiredTransformerKVA() is used upstream.
+  *
+  * designMarginPercent is retained for source compatibility
+  * and is validated, but it is NOT applied again here.
+  */
+ val requiredFinalKVA =
+     input.requiredKVA
 
  val candidates =
      transformers
          .filter { it.verified }
          .filter {
-             it.ratedPowerKVA > 0.0 &&
-                     it.ratedPowerKVA >= requiredWithMargin
+             isPositiveFinite(it.ratedPowerKVA) &&
+                     it.ratedPowerKVA >= requiredFinalKVA
          }
          .filter {
-             it.primaryVoltageV > 0.0 &&
-                     it.secondaryVoltageV > 0.0 &&
-                     it.frequencyHz > 0.0
+             isPositiveFinite(it.primaryVoltageV) &&
+                     isPositiveFinite(it.secondaryVoltageV) &&
+                     isPositiveFinite(it.frequencyHz)
          }
          .filter {
              input.requiredPrimaryVoltageV == null ||
@@ -1562,7 +1540,7 @@ import kotlin.math.tan
          EngineeringCheck(
              name = "Transformer engineering database",
              status = EngineeringStatus.DATA_REQUIRED,
-             requiredValue = requiredWithMargin,
+             requiredValue = requiredFinalKVA,
              unit = "kVA",
              message =
                  "No verified transformer in the engineering catalog satisfies the required capacity and voltage/frequency constraints.",
@@ -1573,7 +1551,7 @@ import kotlin.math.tan
      return TransformerDesignResult(
          status = EngineeringStatus.DATA_REQUIRED,
          selectedTransformer = null,
-         requiredKVA = requiredWithMargin,
+         requiredKVA = requiredFinalKVA,
          checks = checks + dataCheck,
          trace = EngineeringTrace(
              calculationName = "TRANSFORMER DESIGN",
@@ -1594,10 +1572,10 @@ import kotlin.math.tan
          name = "Transformer capacity",
          status = EngineeringStatus.PASS,
          calculatedValue = selected.ratedPowerKVA,
-         requiredValue = requiredWithMargin,
+         requiredValue = requiredFinalKVA,
          unit = "kVA",
          message =
-             "Selected transformer capacity satisfies the required design capacity.",
+             "Selected transformer capacity satisfies the final required design capacity.",
          standardCode =
              EngineeringStandards.transformer.code,
          dataSource =
@@ -1625,7 +1603,7 @@ import kotlin.math.tan
  return TransformerDesignResult(
      status = EngineeringStatus.PASS,
      selectedTransformer = selected,
-     requiredKVA = requiredWithMargin,
+     requiredKVA = requiredFinalKVA,
      checks = checks,
      trace = EngineeringTrace(
          calculationName = "TRANSFORMER DESIGN",
@@ -1633,7 +1611,8 @@ import kotlin.math.tan
          checks = checks,
          assumptions = listOf(
              "Only verified transformer catalog records are eligible.",
-             "The smallest verified transformer satisfying the design requirement is selected.",
+             "The smallest verified transformer satisfying the final design requirement is selected.",
+             "requiredKVA is treated as the final requirement to prevent double application of design margin.",
              "No hardcoded transformer rating list is used."
          )
      )
@@ -1689,305 +1668,289 @@ import kotlin.math.tan
   val trace: EngineeringTrace
   )
   
-  /**
+  fun designGenerator(
+  input: GeneratorDesignInput,
+  generators: List<GeneratorData>
+  ): GeneratorDesignResult {
   
-  * Generator sizing formula:
-  
-  * 
-  
-  * Base kVA = demand kW / PF
-  
-  * 
-  
-  * Motor adjusted kVA =
-  
-  * Base kVA × (1 + motor allowance)
-  
-  * 
-  
-  * Required generator kVA =
-  
-  * Motor adjusted kVA / allowable loading
-  
-  * 
-  
-  * Optional design margin is then applied.
-  
-  * 
-  
-  * No manufacturer rating list is hardcoded here.
-    */
-    fun designGenerator(
-    input: GeneratorDesignInput,
-    generators: List<GeneratorData>
-    ): GeneratorDesignResult {
-    
-    val checks = mutableListOf<EngineeringCheck>()
-    
-    if (input.demandKW <= 0.0) {
-    checks += EngineeringCheck(
-    name = "Generator demand",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.demandKW,
-    unit = "kW",
-    message = "Generator demand must be greater than zero."
-    )
-    }
-    
-    if (input.powerFactor !in 0.01..1.0) {
-    checks += EngineeringCheck(
-    name = "Generator power factor",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.powerFactor,
-    message = "Power factor must be between 0.01 and 1.00."
-    )
-    }
-    
-    if (
-    input.loadingPercent <= 0.0 ||
-    input.loadingPercent > 100.0
-    ) {
-    checks += EngineeringCheck(
-    name = "Generator loading",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.loadingPercent,
-    unit = "%",
-    message =
-    "Generator allowable loading must be greater than 0 and not greater than 100%."
-    )
-    }
-    
-    if (input.motorAllowancePercent < 0.0) {
-    checks += EngineeringCheck(
-    name = "Motor allowance",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.motorAllowancePercent,
-    unit = "%",
-    message = "Motor allowance cannot be negative."
-    )
-    }
-    
-    if (input.designMarginPercent < 0.0) {
-    checks += EngineeringCheck(
-    name = "Generator design margin",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.designMarginPercent,
-    unit = "%",
-    message = "Design margin cannot be negative."
-    )
-    }
-    
-    if (
-    input.requiredVoltageV != null &&
-    input.requiredVoltageV <= 0.0
-    ) {
-    checks += EngineeringCheck(
-    name = "Generator voltage",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.requiredVoltageV,
-    unit = "V",
-    message =
-    "Required generator voltage must be greater than zero."
-    )
-    }
-    
-    if (
-    input.requiredFrequencyHz != null &&
-    input.requiredFrequencyHz <= 0.0
-    ) {
-    checks += EngineeringCheck(
-    name = "Generator frequency",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.requiredFrequencyHz,
-    unit = "Hz",
-    message =
-    "Required generator frequency must be greater than zero."
-    )
-    }
-    
-    if (checks.any { it.status == EngineeringStatus.FAIL }) {
-    return GeneratorDesignResult(
-    status = EngineeringStatus.FAIL,
-    selectedGenerator = null,
-    baseDemandKVA = 0.0,
-    motorAdjustedKVA = 0.0,
-    requiredGeneratorKVA = 0.0,
-    checks = checks,
-    trace = EngineeringTrace(
-    calculationName = "GENERATOR DESIGN",
-    standard = null,
-    checks = checks
-    )
-    )
-    }
-    
-    val baseDemandKVA =
-    input.demandKW / input.powerFactor
-    
-    val motorAdjustedKVA =
-    baseDemandKVA *
-    (1.0 + input.motorAllowancePercent / 100.0)
-    
-    val requiredBeforeMargin =
-    motorAdjustedKVA /
-    (input.loadingPercent / 100.0)
-    
-    val requiredGeneratorKVA =
-    requiredBeforeMargin *
-    (1.0 + input.designMarginPercent / 100.0)
-    
-    checks += EngineeringCheck(
-    name = "Generator required capacity",
-    status = EngineeringStatus.PASS,
-    calculatedValue = requiredGeneratorKVA,
-    unit = "kVA",
-    message =
-    "Generator required capacity calculated from demand, power factor, motor allowance, loading and design margin."
-    )
-    
-    /*
-    
-    * Voltage/frequency are now strict requirements when supplied.
-    * 
-    * A missing catalog value is NOT treated as a match.
-      */
-      val candidates =
-      generators
-      .filter { it.verified }
-      .filter {
-      it.ratedPowerKVA > 0.0 &&
-      it.ratedPowerKVA >= requiredGeneratorKVA
-      }
-      .filter {
-      input.requiredVoltageV == null ||
-      (
-      it.ratedVoltageV != null &&
-      abs(
-      it.ratedVoltageV -
-      input.requiredVoltageV
-      ) < 0.01
-      )
-      }
-      .filter {
-      input.requiredFrequencyHz == null ||
-      (
-      it.frequencyHz != null &&
-      abs(
-      it.frequencyHz -
-      input.requiredFrequencyHz
-      ) < 0.01
-      )
-      }
-      .filter {
-      !input.requirePrimeRating ||
-      it.primeRating
-      }
-      .filter {
-      !input.requireStandbyRating ||
-      it.standbyRating
-      }
-      .sortedBy {
-      it.ratedPowerKVA
-      }
-    
-    if (candidates.isEmpty()) {
-    
+   val checks = mutableListOf<EngineeringCheck>()
+
+ if (!isPositiveFinite(input.demandKW)) {
+     checks += EngineeringCheck(
+         name = "Generator demand",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.demandKW,
+         unit = "kW",
+         message = "Generator demand must be a finite value greater than zero."
+     )
+ }
+
+ if (
+     !isValidFinite(input.powerFactor) ||
+     input.powerFactor !in 0.01..1.0
+ ) {
+     checks += EngineeringCheck(
+         name = "Generator power factor",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.powerFactor,
+         message = "Power factor must be a finite value between 0.01 and 1.00."
+     )
+ }
+
+ if (
+     !isValidFinite(input.loadingPercent) ||
+     input.loadingPercent <= 0.0 ||
+     input.loadingPercent > 100.0
+ ) {
+     checks += EngineeringCheck(
+         name = "Generator loading",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.loadingPercent,
+         unit = "%",
+         message =
+             "Generator allowable loading must be a finite value greater than 0 and not greater than 100%."
+     )
+ }
+
+ if (
+     !isValidFinite(input.motorAllowancePercent) ||
+     input.motorAllowancePercent < 0.0
+ ) {
+     checks += EngineeringCheck(
+         name = "Motor allowance",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.motorAllowancePercent,
+         unit = "%",
+         message = "Motor allowance must be a finite value and cannot be negative."
+     )
+ }
+
+ if (
+     !isValidFinite(input.designMarginPercent) ||
+     input.designMarginPercent < 0.0
+ ) {
+     checks += EngineeringCheck(
+         name = "Generator design margin",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.designMarginPercent,
+         unit = "%",
+         message = "Design margin must be a finite value and cannot be negative."
+     )
+ }
+
+ if (
+     input.requiredVoltageV != null &&
+     !isPositiveFinite(input.requiredVoltageV)
+ ) {
+     checks += EngineeringCheck(
+         name = "Generator voltage",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.requiredVoltageV,
+         unit = "V",
+         message =
+             "Required generator voltage must be a finite value greater than zero."
+     )
+ }
+
+ if (
+     input.requiredFrequencyHz != null &&
+     !isPositiveFinite(input.requiredFrequencyHz)
+ ) {
+     checks += EngineeringCheck(
+         name = "Generator frequency",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.requiredFrequencyHz,
+         unit = "Hz",
+         message =
+             "Required generator frequency must be a finite value greater than zero."
+     )
+ }
+
+ if (checks.any { it.status == EngineeringStatus.FAIL }) {
+     return GeneratorDesignResult(
+         status = EngineeringStatus.FAIL,
+         selectedGenerator = null,
+         baseDemandKVA = 0.0,
+         motorAdjustedKVA = 0.0,
+         requiredGeneratorKVA = 0.0,
+         checks = checks,
+         trace = EngineeringTrace(
+             calculationName = "GENERATOR DESIGN",
+             standard = null,
+             checks = checks
+         )
+     )
+ }
+
+ val baseDemandKVA =
+     input.demandKW / input.powerFactor
+
+ val motorAdjustedKVA =
+     baseDemandKVA *
+             (1.0 + input.motorAllowancePercent / 100.0)
+
+ val requiredBeforeMargin =
+     motorAdjustedKVA /
+             (input.loadingPercent / 100.0)
+
+ val requiredGeneratorKVA =
+     requiredBeforeMargin *
+             (1.0 + input.designMarginPercent / 100.0)
+
+ checks += EngineeringCheck(
+     name = "Generator required capacity",
+     status = EngineeringStatus.PASS,
+     calculatedValue = requiredGeneratorKVA,
+     unit = "kVA",
+     message =
+         "Generator required capacity calculated from demand, power factor, motor allowance, loading and design margin."
+ )
+
+ /*
+  * Voltage/frequency are strict requirements when supplied.
+  * A missing catalog value is NOT treated as a match.
+  */
+ val candidates =
+     generators
+         .filter { it.verified }
+         .filter {
+             isPositiveFinite(it.ratedPowerKVA) &&
+                     it.ratedPowerKVA >= requiredGeneratorKVA
+         }
+         .filter {
+             input.requiredVoltageV == null ||
+                     (
+                         it.ratedVoltageV != null &&
+                                 isValidFinite(it.ratedVoltageV) &&
+                                 it.ratedVoltageV > 0.0 &&
+                                 abs(
+                                     it.ratedVoltageV -
+                                             input.requiredVoltageV
+                                 ) < 0.01
+                         )
+         }
+         .filter {
+             input.requiredFrequencyHz == null ||
+                     (
+                         it.frequencyHz != null &&
+                                 isValidFinite(it.frequencyHz) &&
+                                 it.frequencyHz > 0.0 &&
+                                 abs(
+                                     it.frequencyHz -
+                                             input.requiredFrequencyHz
+                                 ) < 0.01
+                         )
+         }
+         .filter {
+             !input.requirePrimeRating ||
+                     it.primeRating
+         }
+         .filter {
+             !input.requireStandbyRating ||
+                     it.standbyRating
+         }
+         .sortedBy {
+             it.ratedPowerKVA
+         }
+
+ if (candidates.isEmpty()) {
+
      val dataCheck =
-     EngineeringCheck(
-         name = "Generator engineering database",
+         EngineeringCheck(
+             name = "Generator engineering database",
+             status = EngineeringStatus.DATA_REQUIRED,
+             requiredValue = requiredGeneratorKVA,
+             unit = "kVA",
+             message =
+                 "No verified generator catalog record satisfies the calculated requirement and all specified voltage/frequency/rating constraints."
+         )
+
+     return GeneratorDesignResult(
          status = EngineeringStatus.DATA_REQUIRED,
+         selectedGenerator = null,
+         baseDemandKVA = baseDemandKVA,
+         motorAdjustedKVA = motorAdjustedKVA,
+         requiredGeneratorKVA = requiredGeneratorKVA,
+         checks = checks + dataCheck,
+         trace = EngineeringTrace(
+             calculationName = "GENERATOR DESIGN",
+             standard = null,
+             checks = checks + dataCheck,
+             warnings = listOf(
+                 "Verified generator manufacturer/catalog data is required.",
+                 "A specified voltage or frequency cannot be accepted when the catalog record does not contain that value."
+             )
+         )
+     )
+ }
+
+ val selected =
+     candidates.first()
+
+ val capacityCheck =
+     EngineeringCheck(
+         name = "Generator capacity",
+         status = EngineeringStatus.PASS,
+         calculatedValue = selected.ratedPowerKVA,
          requiredValue = requiredGeneratorKVA,
          unit = "kVA",
          message =
-             "No verified generator catalog record satisfies the calculated requirement and all specified voltage/frequency/rating constraints."
+             "Selected generator rating satisfies the calculated requirement.",
+         dataSource =
+             "${selected.manufacturerName} / ${selected.catalogName} / ${selected.catalogRevision}"
      )
 
+ checks += capacityCheck
+
+ if (input.requiredVoltageV != null) {
+     checks += EngineeringCheck(
+         name = "Generator rated voltage",
+         status = EngineeringStatus.PASS,
+         calculatedValue = selected.ratedVoltageV,
+         requiredValue = input.requiredVoltageV,
+         unit = "V",
+         message =
+             "Generator rated voltage matches the specified requirement.",
+         dataSource =
+             "${selected.manufacturerName} / ${selected.catalogName}"
+     )
+ }
+
+ if (input.requiredFrequencyHz != null) {
+     checks += EngineeringCheck(
+         name = "Generator frequency",
+         status = EngineeringStatus.PASS,
+         calculatedValue = selected.frequencyHz,
+         requiredValue = input.requiredFrequencyHz,
+         unit = "Hz",
+         message =
+             "Generator frequency matches the specified requirement.",
+         dataSource =
+             "${selected.manufacturerName} / ${selected.catalogName}"
+     )
+ }
+
  return GeneratorDesignResult(
-     status = EngineeringStatus.DATA_REQUIRED,
-     selectedGenerator = null,
+     status = EngineeringStatus.PASS,
+     selectedGenerator = selected,
      baseDemandKVA = baseDemandKVA,
      motorAdjustedKVA = motorAdjustedKVA,
      requiredGeneratorKVA = requiredGeneratorKVA,
-     checks = checks + dataCheck,
+     checks = checks,
      trace = EngineeringTrace(
          calculationName = "GENERATOR DESIGN",
          standard = null,
-         checks = checks + dataCheck,
-         warnings = listOf(
-             "Verified generator manufacturer/catalog data is required.",
-             "A specified voltage or frequency cannot be accepted when the catalog record does not contain that value."
+         checks = checks,
+         assumptions = listOf(
+             "Generator ratings are taken only from verified catalog records.",
+             "No generic manufacturer rating list is hardcoded.",
+             "Motor allowance and generator loading are explicit engineering inputs.",
+             "When voltage or frequency is specified, the corresponding catalog value must be present and compatible."
          )
      )
  )
-    
-    }
-    
-    val selected =
-    candidates.first()
-    
-    val capacityCheck =
-    EngineeringCheck(
-    name = "Generator capacity",
-    status = EngineeringStatus.PASS,
-    calculatedValue = selected.ratedPowerKVA,
-    requiredValue = requiredGeneratorKVA,
-    unit = "kVA",
-    message =
-    "Selected generator rating satisfies the calculated requirement.",
-    dataSource =
-    "${selected.manufacturerName} / ${selected.catalogName} / ${selected.catalogRevision}"
-    )
-    
-    checks += capacityCheck
-    
-    if (input.requiredVoltageV != null) {
-    checks += EngineeringCheck(
-    name = "Generator rated voltage",
-    status = EngineeringStatus.PASS,
-    calculatedValue = selected.ratedVoltageV,
-    requiredValue = input.requiredVoltageV,
-    unit = "V",
-    message =
-    "Generator rated voltage matches the specified requirement.",
-    dataSource =
-    "${selected.manufacturerName} / ${selected.catalogName}"
-    )
-    }
-    
-    if (input.requiredFrequencyHz != null) {
-    checks += EngineeringCheck(
-    name = "Generator frequency",
-    status = EngineeringStatus.PASS,
-    calculatedValue = selected.frequencyHz,
-    requiredValue = input.requiredFrequencyHz,
-    unit = "Hz",
-    message =
-    "Generator frequency matches the specified requirement.",
-    dataSource =
-    "${selected.manufacturerName} / ${selected.catalogName}"
-    )
-    }
-    
-    return GeneratorDesignResult(
-    status = EngineeringStatus.PASS,
-    selectedGenerator = selected,
-    baseDemandKVA = baseDemandKVA,
-    motorAdjustedKVA = motorAdjustedKVA,
-    requiredGeneratorKVA = requiredGeneratorKVA,
-    checks = checks,
-    trace = EngineeringTrace(
-    calculationName = "GENERATOR DESIGN",
-    standard = null,
-    checks = checks,
-    assumptions = listOf(
-    "Generator ratings are taken only from verified catalog records.",
-    "No generic manufacturer rating list is hardcoded.",
-    "Motor allowance and generator loading are explicit engineering inputs.",
-    "When voltage or frequency is specified, the corresponding catalog value must be present and compatible."
-    )
-    )
-    )
-    }
+  
+  }
   
   // ============================================================
   // CAPACITOR BANK / POWER FACTOR CORRECTION
@@ -2011,156 +1974,131 @@ import kotlin.math.tan
   val trace: EngineeringTrace
   )
   
-  /**
+  fun calculateCapacitorBank(
+  input: CapacitorBankInput
+  ): CapacitorBankResult {
   
-  * Power-factor correction:
+   val checks = mutableListOf<EngineeringCheck>()
+
+ if (!isPositiveFinite(input.activePowerKW)) {
+     checks += EngineeringCheck(
+         name = "Active power",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.activePowerKW,
+         unit = "kW",
+         message =
+             "Active power must be a finite value greater than zero."
+     )
+ }
+
+ if (
+     !isValidFinite(input.existingPowerFactor) ||
+     input.existingPowerFactor !in 0.01..1.0
+ ) {
+     checks += EngineeringCheck(
+         name = "Existing power factor",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.existingPowerFactor,
+         message =
+             "Existing power factor must be a finite value between 0.01 and 1.00."
+     )
+ }
+
+ if (
+     !isValidFinite(input.targetPowerFactor) ||
+     input.targetPowerFactor !in 0.01..1.0
+ ) {
+     checks += EngineeringCheck(
+         name = "Target power factor",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.targetPowerFactor,
+         message =
+             "Target power factor must be a finite value between 0.01 and 1.00."
+     )
+ }
+
+ if (
+     input.existingPowerFactor in 0.01..1.0 &&
+     input.targetPowerFactor in 0.01..1.0 &&
+     input.targetPowerFactor <= input.existingPowerFactor
+ ) {
+     checks += EngineeringCheck(
+         name = "Power factor improvement",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.targetPowerFactor,
+         requiredValue = input.existingPowerFactor,
+         message =
+             "Target power factor must be greater than existing power factor."
+     )
+ }
+
+ if (checks.any { it.status == EngineeringStatus.FAIL }) {
+     return CapacitorBankResult(
+         status = EngineeringStatus.FAIL,
+         activePowerKW = input.activePowerKW,
+         existingPowerFactor = input.existingPowerFactor,
+         targetPowerFactor = input.targetPowerFactor,
+         existingReactivePowerKVAR = 0.0,
+         targetReactivePowerKVAR = 0.0,
+         requiredCompensationKVAR = 0.0,
+         checks = checks,
+         trace = EngineeringTrace(
+             calculationName = "CAPACITOR BANK",
+             standard = null,
+             checks = checks
+         )
+     )
+ }
+
+ val phiExisting =
+     acos(input.existingPowerFactor)
+
+ val phiTarget =
+     acos(input.targetPowerFactor)
+
+ val existingReactivePowerKVAR =
+     input.activePowerKW * tan(phiExisting)
+
+ val targetReactivePowerKVAR =
+     input.activePowerKW * tan(phiTarget)
+
+ val requiredCompensationKVAR =
+     (
+         existingReactivePowerKVAR -
+                 targetReactivePowerKVAR
+         ).coerceAtLeast(0.0)
+
+ checks += EngineeringCheck(
+     name = "Required reactive compensation",
+     status = EngineeringStatus.PASS,
+     calculatedValue = requiredCompensationKVAR,
+     unit = "kVAr",
+     message =
+         "Required theoretical reactive compensation calculated."
+ )
+
+ return CapacitorBankResult(
+     status = EngineeringStatus.PASS,
+     activePowerKW = input.activePowerKW,
+     existingPowerFactor = input.existingPowerFactor,
+     targetPowerFactor = input.targetPowerFactor,
+     existingReactivePowerKVAR = existingReactivePowerKVAR,
+     targetReactivePowerKVAR = targetReactivePowerKVAR,
+     requiredCompensationKVAR = requiredCompensationKVAR,
+     checks = checks,
+     trace = EngineeringTrace(
+         calculationName = "CAPACITOR BANK",
+         standard = null,
+         checks = checks,
+         assumptions = listOf(
+             "Calculation assumes balanced sinusoidal fundamental-frequency conditions.",
+             "The result is theoretical reactive compensation.",
+             "Actual capacitor steps, detuning reactors and switching equipment require separate equipment selection."
+         )
+     )
+ )
   
-  * 
-  
-  * Qc = P × (tan φ1 - tan φ2)
-  
-  * 
-  
-  * where:
-  
-  * 
-  
-  * φ1 = acos(existing PF)
-  
-  * φ2 = acos(target PF)
-  
-  * 
-  
-  * P is active power in kW.
-  
-  * 
-  
-  * Result is the theoretical reactive compensation required in kVAr.
-  
-  * 
-  
-  * Actual capacitor bank step selection is a separate equipment
-  
-  * selection stage and must use verified manufacturer/catalog data.
-    */
-    fun calculateCapacitorBank(
-    input: CapacitorBankInput
-    ): CapacitorBankResult {
-    
-    val checks = mutableListOf<EngineeringCheck>()
-    
-    if (input.activePowerKW <= 0.0) {
-    checks += EngineeringCheck(
-    name = "Active power",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.activePowerKW,
-    unit = "kW",
-    message =
-    "Active power must be greater than zero."
-    )
-    }
-    
-    if (input.existingPowerFactor !in 0.01..1.0) {
-    checks += EngineeringCheck(
-    name = "Existing power factor",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.existingPowerFactor,
-    message =
-    "Existing power factor must be between 0.01 and 1.00."
-    )
-    }
-    
-    if (input.targetPowerFactor !in 0.01..1.0) {
-    checks += EngineeringCheck(
-    name = "Target power factor",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.targetPowerFactor,
-    message =
-    "Target power factor must be between 0.01 and 1.00."
-    )
-    }
-    
-    if (
-    input.existingPowerFactor in 0.01..1.0 &&
-    input.targetPowerFactor in 0.01..1.0 &&
-    input.targetPowerFactor <= input.existingPowerFactor
-    ) {
-    checks += EngineeringCheck(
-    name = "Power factor improvement",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.targetPowerFactor,
-    requiredValue = input.existingPowerFactor,
-    message =
-    "Target power factor must be greater than existing power factor."
-    )
-    }
-    
-    if (checks.any { it.status == EngineeringStatus.FAIL }) {
-    return CapacitorBankResult(
-    status = EngineeringStatus.FAIL,
-    activePowerKW = input.activePowerKW,
-    existingPowerFactor = input.existingPowerFactor,
-    targetPowerFactor = input.targetPowerFactor,
-    existingReactivePowerKVAR = 0.0,
-    targetReactivePowerKVAR = 0.0,
-    requiredCompensationKVAR = 0.0,
-    checks = checks,
-    trace = EngineeringTrace(
-    calculationName = "CAPACITOR BANK",
-    standard = null,
-    checks = checks
-    )
-    )
-    }
-    
-    val phiExisting =
-    acos(input.existingPowerFactor)
-    
-    val phiTarget =
-    acos(input.targetPowerFactor)
-    
-    val existingReactivePowerKVAR =
-    input.activePowerKW * tan(phiExisting)
-    
-    val targetReactivePowerKVAR =
-    input.activePowerKW * tan(phiTarget)
-    
-    val requiredCompensationKVAR =
-    (
-    existingReactivePowerKVAR -
-    targetReactivePowerKVAR
-    ).coerceAtLeast(0.0)
-    
-    checks += EngineeringCheck(
-    name = "Required reactive compensation",
-    status = EngineeringStatus.PASS,
-    calculatedValue = requiredCompensationKVAR,
-    unit = "kVAr",
-    message =
-    "Required theoretical reactive compensation calculated."
-    )
-    
-    return CapacitorBankResult(
-    status = EngineeringStatus.PASS,
-    activePowerKW = input.activePowerKW,
-    existingPowerFactor = input.existingPowerFactor,
-    targetPowerFactor = input.targetPowerFactor,
-    existingReactivePowerKVAR = existingReactivePowerKVAR,
-    targetReactivePowerKVAR = targetReactivePowerKVAR,
-    requiredCompensationKVAR = requiredCompensationKVAR,
-    checks = checks,
-    trace = EngineeringTrace(
-    calculationName = "CAPACITOR BANK",
-    standard = null,
-    checks = checks,
-    assumptions = listOf(
-    "Calculation assumes balanced sinusoidal fundamental-frequency conditions.",
-    "The result is theoretical reactive compensation.",
-    "Actual capacitor steps, detuning reactors and switching equipment require separate equipment selection."
-    )
-    )
-    )
-    }
+  }
   
   // ============================================================
   // EARTHING
@@ -2182,169 +2120,143 @@ import kotlin.math.tan
   val trace: EngineeringTrace
   )
   
-  /**
+  fun calculateEarthing(
+  input: EarthingInput
+  ): EarthingResult {
   
-  * Earthing verification.
-  
-  * 
-  
-  * EPR = Rearth × Ifault
-  
-  * 
-  
-  * Rmax = Vtouch / Ifault
-  
-  * 
-  
-  * Acceptance:
-  
-  * 
-  
-  * Rearth ≤ Rmax
-  
-  * 
-  
-  * This function verifies supplied values only.
-    */
-    fun calculateEarthing(
-    input: EarthingInput
-    ): EarthingResult {
-    
-    val checks = mutableListOf<EngineeringCheck>()
-    
-    if (input.earthResistanceOhm <= 0.0) {
-    checks += EngineeringCheck(
-    name = "Earth resistance",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.earthResistanceOhm,
-    unit = "Ω",
-    message =
-    "Earth resistance must be greater than zero."
-    )
-    }
-    
-    if (input.faultCurrentA <= 0.0) {
-    checks += EngineeringCheck(
-    name = "Earth fault current",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.faultCurrentA,
-    unit = "A",
-    message =
-    "Earth fault current must be greater than zero."
-    )
-    }
-    
-    if (input.permissibleTouchVoltageV <= 0.0) {
-    checks += EngineeringCheck(
-    name = "Permissible touch voltage",
-    status = EngineeringStatus.FAIL,
-    calculatedValue = input.permissibleTouchVoltageV,
-    unit = "V",
-    message =
-    "Permissible touch voltage must be greater than zero."
-    )
-    }
-    
-    if (checks.any { it.status == EngineeringStatus.FAIL }) {
-    
+   val checks = mutableListOf<EngineeringCheck>()
+
+ if (!isPositiveFinite(input.earthResistanceOhm)) {
+     checks += EngineeringCheck(
+         name = "Earth resistance",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.earthResistanceOhm,
+         unit = "Ω",
+         message =
+             "Earth resistance must be a finite value greater than zero."
+     )
+ }
+
+ if (!isPositiveFinite(input.faultCurrentA)) {
+     checks += EngineeringCheck(
+         name = "Earth fault current",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.faultCurrentA,
+         unit = "A",
+         message =
+             "Earth fault current must be a finite value greater than zero."
+     )
+ }
+
+ if (!isPositiveFinite(input.permissibleTouchVoltageV)) {
+     checks += EngineeringCheck(
+         name = "Permissible touch voltage",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.permissibleTouchVoltageV,
+         unit = "V",
+         message =
+             "Permissible touch voltage must be a finite value greater than zero."
+     )
+ }
+
+ if (checks.any { it.status == EngineeringStatus.FAIL }) {
+
      return EarthingResult(
-     status = EngineeringStatus.FAIL,
+         status = EngineeringStatus.FAIL,
+         earthResistanceOhm = input.earthResistanceOhm,
+         faultCurrentA = input.faultCurrentA,
+         earthPotentialRiseV = 0.0,
+         maximumResistanceOhm = 0.0,
+         checks = checks,
+         trace = EngineeringTrace(
+             calculationName = "EARTHING CHECK",
+             standard = null,
+             checks = checks,
+             warnings = listOf(
+                 "Invalid earthing input must be corrected before calculation."
+             )
+         )
+     )
+ }
+
+ val earthPotentialRiseV =
+     input.earthResistanceOhm *
+             input.faultCurrentA
+
+ val maximumResistanceOhm =
+     input.permissibleTouchVoltageV /
+             input.faultCurrentA
+
+ val resistancePass =
+     input.earthResistanceOhm <=
+             maximumResistanceOhm
+
+ val resistanceCheck =
+     EngineeringCheck(
+         name = "Earth resistance safety check",
+         status =
+             if (resistancePass) {
+                 EngineeringStatus.PASS
+             } else {
+                 EngineeringStatus.FAIL
+             },
+         calculatedValue =
+             input.earthResistanceOhm,
+         requiredValue =
+             maximumResistanceOhm,
+         unit = "Ω",
+         message =
+             if (resistancePass) {
+                 "Earth resistance is within the maximum permissible value."
+             } else {
+                 "Earth resistance exceeds the maximum permissible value."
+             }
+     )
+
+ checks += resistanceCheck
+
+ val eprCheck =
+     EngineeringCheck(
+         name = "Earth Potential Rise",
+         status = EngineeringStatus.PASS,
+         calculatedValue = earthPotentialRiseV,
+         unit = "V",
+         message =
+             "Earth Potential Rise calculated from earth resistance and earth fault current."
+     )
+
+ checks += eprCheck
+
+ return EarthingResult(
+     status =
+         if (resistancePass) {
+             EngineeringStatus.PASS
+         } else {
+             EngineeringStatus.FAIL
+         },
      earthResistanceOhm =
          input.earthResistanceOhm,
      faultCurrentA =
          input.faultCurrentA,
-     earthPotentialRiseV = 0.0,
-     maximumResistanceOhm = 0.0,
+     earthPotentialRiseV =
+         earthPotentialRiseV,
+     maximumResistanceOhm =
+         maximumResistanceOhm,
      checks = checks,
      trace = EngineeringTrace(
          calculationName = "EARTHING CHECK",
          standard = null,
          checks = checks,
-         warnings = listOf(
-             "Invalid earthing input must be corrected before calculation."
+         assumptions = listOf(
+             "Earth Potential Rise = Earth Resistance × Earth Fault Current.",
+             "Maximum permissible earth resistance = Permissible Touch Voltage ÷ Earth Fault Current.",
+             "Acceptance criterion is Earth Resistance ≤ Maximum Permissible Earth Resistance.",
+             "This calculation verifies the supplied values and is not a complete earthing-system design study."
          )
      )
  )
-    
-    }
-    
-    val earthPotentialRiseV =
-    input.earthResistanceOhm *
-    input.faultCurrentA
-    
-    val maximumResistanceOhm =
-    input.permissibleTouchVoltageV /
-    input.faultCurrentA
-    
-    val resistancePass =
-    input.earthResistanceOhm <=
-    maximumResistanceOhm
-    
-    val resistanceCheck =
-    EngineeringCheck(
-    name = "Earth resistance safety check",
-    status =
-    if (resistancePass) {
-    EngineeringStatus.PASS
-    } else {
-    EngineeringStatus.FAIL
-    },
-    calculatedValue =
-    input.earthResistanceOhm,
-    requiredValue =
-    maximumResistanceOhm,
-    unit = "Ω",
-    message =
-    if (resistancePass) {
-    "Earth resistance is within the maximum permissible value."
-    } else {
-    "Earth resistance exceeds the maximum permissible value."
-    }
-    )
-    
-    checks += resistanceCheck
-    
-    val eprCheck =
-    EngineeringCheck(
-    name = "Earth Potential Rise",
-    status = EngineeringStatus.PASS,
-    calculatedValue = earthPotentialRiseV,
-    unit = "V",
-    message =
-    "Earth Potential Rise calculated from earth resistance and earth fault current."
-    )
-    
-    checks += eprCheck
-    
-    return EarthingResult(
-    status =
-    if (resistancePass) {
-    EngineeringStatus.PASS
-    } else {
-    EngineeringStatus.FAIL
-    },
-    earthResistanceOhm =
-    input.earthResistanceOhm,
-    faultCurrentA =
-    input.faultCurrentA,
-    earthPotentialRiseV =
-    earthPotentialRiseV,
-    maximumResistanceOhm =
-    maximumResistanceOhm,
-    checks = checks,
-    trace = EngineeringTrace(
-    calculationName = "EARTHING CHECK",
-    standard = null,
-    checks = checks,
-    assumptions = listOf(
-    "Earth Potential Rise = Earth Resistance × Earth Fault Current.",
-    "Maximum permissible earth resistance = Permissible Touch Voltage ÷ Earth Fault Current.",
-    "Acceptance criterion is Earth Resistance ≤ Maximum Permissible Earth Resistance.",
-    "This calculation verifies the supplied values and is not a complete earthing-system design study."
-    )
-    )
-    )
-    }
+  
+  }
   
   // ============================================================
   // SHORT CIRCUIT
@@ -2374,7 +2286,7 @@ import kotlin.math.tan
      )
  }
 
- if (input.source.voltageV <= 0.0) {
+ if (!isPositiveFinite(input.source.voltageV)) {
 
      checks += EngineeringCheck(
          name = "Fault calculation voltage",
@@ -2382,13 +2294,13 @@ import kotlin.math.tan
          calculatedValue = input.source.voltageV,
          unit = "V",
          message =
-             "Calculation voltage must be greater than zero."
+             "Calculation voltage must be a finite value greater than zero."
      )
  }
 
  if (
      input.source.transformerKVA != null &&
-     input.source.transformerKVA <= 0.0
+     !isPositiveFinite(input.source.transformerKVA)
  ) {
 
      checks += EngineeringCheck(
@@ -2397,13 +2309,13 @@ import kotlin.math.tan
          calculatedValue = input.source.transformerKVA,
          unit = "kVA",
          message =
-             "Transformer rating must be greater than zero."
+             "Transformer rating must be a finite value greater than zero."
      )
  }
 
  if (
      input.source.transformerImpedancePercent != null &&
-     input.source.transformerImpedancePercent <= 0.0
+     !isPositiveFinite(input.source.transformerImpedancePercent)
  ) {
 
      checks += EngineeringCheck(
@@ -2413,13 +2325,47 @@ import kotlin.math.tan
              input.source.transformerImpedancePercent,
          unit = "%",
          message =
-             "Transformer impedance must be greater than zero."
+             "Transformer impedance must be a finite value greater than zero."
+     )
+ }
+
+ if (
+     input.source.transformerResistancePercent != null &&
+     (
+         !isValidFinite(input.source.transformerResistancePercent) ||
+                 input.source.transformerResistancePercent < 0.0
+         )
+ ) {
+     checks += EngineeringCheck(
+         name = "Transformer resistance percent",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.source.transformerResistancePercent,
+         unit = "%",
+         message =
+             "Transformer resistance percent must be a finite non-negative value."
+     )
+ }
+
+ if (
+     input.source.transformerReactancePercent != null &&
+     (
+         !isValidFinite(input.source.transformerReactancePercent) ||
+                 input.source.transformerReactancePercent < 0.0
+         )
+ ) {
+     checks += EngineeringCheck(
+         name = "Transformer reactance percent",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.source.transformerReactancePercent,
+         unit = "%",
+         message =
+             "Transformer reactance percent must be a finite non-negative value."
      )
  }
 
  if (
      input.source.upstreamShortCircuitKA != null &&
-     input.source.upstreamShortCircuitKA <= 0.0
+     !isPositiveFinite(input.source.upstreamShortCircuitKA)
  ) {
 
      checks += EngineeringCheck(
@@ -2429,7 +2375,41 @@ import kotlin.math.tan
              input.source.upstreamShortCircuitKA,
          unit = "kA",
          message =
-             "Upstream short-circuit current must be greater than zero."
+             "Upstream short-circuit current must be a finite value greater than zero."
+     )
+ }
+
+ if (
+     input.source.upstreamResistanceOhm != null &&
+     (
+         !isValidFinite(input.source.upstreamResistanceOhm) ||
+                 input.source.upstreamResistanceOhm < 0.0
+         )
+ ) {
+     checks += EngineeringCheck(
+         name = "Upstream resistance",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.source.upstreamResistanceOhm,
+         unit = "Ω",
+         message =
+             "Upstream resistance must be a finite non-negative value."
+     )
+ }
+
+ if (
+     input.source.upstreamReactanceOhm != null &&
+     (
+         !isValidFinite(input.source.upstreamReactanceOhm) ||
+                 input.source.upstreamReactanceOhm < 0.0
+         )
+ ) {
+     checks += EngineeringCheck(
+         name = "Upstream reactance",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.source.upstreamReactanceOhm,
+         unit = "Ω",
+         message =
+             "Upstream reactance must be a finite non-negative value."
      )
  }
 
@@ -2456,7 +2436,7 @@ import kotlin.math.tan
      cable != null
 
  /*
-  * Transformer %Z alone cannot be combined with a downstream
+  * Transformer %Z alone cannot be combined with downstream
   * R/X feeder because %Z gives magnitude only.
   */
  if (
@@ -2536,8 +2516,10 @@ import kotlin.math.tan
  if (cable != null) {
 
      if (
-         cable.lengthM <= 0.0 ||
+         !isPositiveFinite(cable.lengthM) ||
          cable.parallelRuns < 1 ||
+         !isValidFinite(cable.resistanceOhmPerKm) ||
+         !isValidFinite(cable.reactanceOhmPerKm) ||
          cable.resistanceOhmPerKm < 0.0 ||
          cable.reactanceOhmPerKm < 0.0
      ) {
@@ -2604,7 +2586,9 @@ import kotlin.math.tan
                  totalX * totalX
      )
 
- if (magnitude <= 0.0) {
+ if (
+     !isPositiveFinite(magnitude)
+ ) {
 
      val fail =
          EngineeringCheck(
@@ -2613,7 +2597,7 @@ import kotlin.math.tan
              calculatedValue = magnitude,
              unit = "Ω",
              message =
-                 "Equivalent impedance must be greater than zero."
+                 "Equivalent impedance must be a finite value greater than zero."
          )
 
      return ShortCircuitResult(
@@ -2642,9 +2626,6 @@ import kotlin.math.tan
   *
   * Ik = V / (sqrt(3) × |Z|)
   *
-  * This remains the established calculation path for
-  * compatibility with the existing ShortCircuitResult API.
-  *
   * Full IEC 60909 maximum/minimum voltage-factor treatment
   * requires additional input fields in ShortCircuitInput.
   */
@@ -2657,6 +2638,32 @@ import kotlin.math.tan
 
  val faultCurrentKA =
      faultCurrentA / 1000.0
+
+ if (!isPositiveFinite(faultCurrentA)) {
+
+     val fail =
+         EngineeringCheck(
+             name = "Calculated short-circuit current",
+             status = EngineeringStatus.FAIL,
+             calculatedValue = faultCurrentA,
+             unit = "A",
+             message =
+                 "Calculated short-circuit current is not a valid finite positive value."
+         )
+
+     return ShortCircuitResult(
+         status = EngineeringStatus.FAIL,
+         faultCurrentA = 0.0,
+         faultCurrentKA = 0.0,
+         equivalentImpedance = equivalent,
+         checks = checks + fail,
+         trace = EngineeringTrace(
+             calculationName = "SHORT CIRCUIT",
+             standard = EngineeringStandards.shortCircuit,
+             checks = checks + fail
+         )
+     )
+ }
 
  checks += EngineeringCheck(
      name = "Equivalent impedance",
@@ -2692,6 +2699,8 @@ import kotlin.math.tan
              "Cable R and X are supplied by engineering data.",
              "Parallel identical feeder runs reduce R and X by the number of runs.",
              "No transformer R/X split is invented.",
+             "Transformer %Z alone is not treated as known transformer R/X when downstream feeder impedance must be added.",
+             "Upstream fault current alone is not treated as known upstream R/X when downstream feeder impedance must be added.",
              "Voltage-factor maximum/minimum cases require the corresponding input data and are not invented by this core.",
              "This calculation is not a complete unbalanced-fault or protection study."
          )
@@ -2715,7 +2724,9 @@ import kotlin.math.tan
  ) {
 
      if (
-         source.transformerKVA <= 0.0 ||
+         !isPositiveFinite(source.transformerKVA) ||
+         !isValidFinite(source.transformerResistancePercent) ||
+         !isValidFinite(source.transformerReactancePercent) ||
          source.transformerResistancePercent < 0.0 ||
          source.transformerReactancePercent < 0.0
      ) {
@@ -2746,7 +2757,7 @@ import kotlin.math.tan
                      x * x
          )
 
-     if (magnitude <= 0.0) {
+     if (!isPositiveFinite(magnitude)) {
          return null
      }
 
@@ -2767,8 +2778,8 @@ import kotlin.math.tan
  ) {
 
      if (
-         source.transformerKVA <= 0.0 ||
-         source.transformerImpedancePercent <= 0.0
+         !isPositiveFinite(source.transformerKVA) ||
+         !isPositiveFinite(source.transformerImpedancePercent)
      ) {
          return null
      }
@@ -2786,7 +2797,7 @@ import kotlin.math.tan
                  source.transformerImpedancePercent /
                  100.0
 
-     if (z <= 0.0) {
+     if (!isPositiveFinite(z)) {
          return null
      }
 
@@ -2815,6 +2826,8 @@ import kotlin.math.tan
  ) {
 
      if (
+         !isValidFinite(source.upstreamResistanceOhm) ||
+         !isValidFinite(source.upstreamReactanceOhm) ||
          source.upstreamResistanceOhm < 0.0 ||
          source.upstreamReactanceOhm < 0.0
      ) {
@@ -2833,7 +2846,7 @@ import kotlin.math.tan
                      x * x
          )
 
-     if (magnitude <= 0.0) {
+     if (!isPositiveFinite(magnitude)) {
          return null
      }
 
@@ -2855,7 +2868,10 @@ import kotlin.math.tan
      val ikA =
          source.upstreamShortCircuitKA
 
-     if (ikA <= 0.0) {
+     if (
+         !isPositiveFinite(ikA) ||
+         !isPositiveFinite(source.voltageV)
+     ) {
          return null
      }
 
@@ -2867,7 +2883,7 @@ import kotlin.math.tan
                              1000.0
                      )
 
-     if (z <= 0.0) {
+     if (!isPositiveFinite(z)) {
          return null
      }
 
@@ -2915,7 +2931,7 @@ import kotlin.math.tan
   
    val checks = mutableListOf<EngineeringCheck>()
 
- if (input.designCurrentA <= 0.0) {
+ if (!isPositiveFinite(input.designCurrentA)) {
 
      checks += EngineeringCheck(
          name = "Design current Ib",
@@ -2923,11 +2939,11 @@ import kotlin.math.tan
          calculatedValue = input.designCurrentA,
          unit = "A",
          message =
-             "Design current must be greater than zero."
+             "Design current must be a finite value greater than zero."
      )
  }
 
- if (input.cableAmpacityA <= 0.0) {
+ if (!isPositiveFinite(input.cableAmpacityA)) {
 
      checks += EngineeringCheck(
          name = "Cable ampacity Iz",
@@ -2935,11 +2951,11 @@ import kotlin.math.tan
          calculatedValue = input.cableAmpacityA,
          unit = "A",
          message =
-             "Verified cable ampacity is required."
+             "Verified cable ampacity must be a finite value greater than zero."
      )
  }
 
- if (input.breakerRatedCurrentA <= 0.0) {
+ if (!isPositiveFinite(input.breakerRatedCurrentA)) {
 
      checks += EngineeringCheck(
          name = "Breaker rated current In",
@@ -2947,15 +2963,11 @@ import kotlin.math.tan
          calculatedValue = input.breakerRatedCurrentA,
          unit = "A",
          message =
-             "Breaker rated current must be greater than zero."
+             "Breaker rated current must be a finite value greater than zero."
      )
  }
 
- /*
-  * Zero prospective fault current is not acceptable for
-  * professional breaking-capacity verification.
-  */
- if (input.prospectiveShortCircuitKA <= 0.0) {
+ if (!isPositiveFinite(input.prospectiveShortCircuitKA)) {
 
      checks += EngineeringCheck(
          name = "Prospective short-circuit current Ik",
@@ -2964,27 +2976,11 @@ import kotlin.math.tan
              input.prospectiveShortCircuitKA,
          unit = "kA",
          message =
-             "Prospective short-circuit current must be greater than zero."
+             "Prospective short-circuit current must be a finite value greater than zero."
      )
  }
 
- if (
-     input.prospectiveShortCircuitKA.isNaN() ||
-     input.prospectiveShortCircuitKA.isInfinite()
- ) {
-
-     checks += EngineeringCheck(
-         name = "Prospective short-circuit current validity",
-         status = EngineeringStatus.FAIL,
-         calculatedValue =
-             input.prospectiveShortCircuitKA,
-         unit = "kA",
-         message =
-             "Prospective short-circuit current must be a finite engineering value."
-     )
- }
-
- if (input.breakerIcuKA <= 0.0) {
+ if (!isPositiveFinite(input.breakerIcuKA)) {
 
      checks += EngineeringCheck(
          name = "Breaker Icu",
@@ -2992,13 +2988,13 @@ import kotlin.math.tan
          calculatedValue = input.breakerIcuKA,
          unit = "kA",
          message =
-             "Breaker Icu must be greater than zero."
+             "Breaker Icu must be a finite value greater than zero."
      )
  }
 
  if (
      input.breakerIcsKA != null &&
-     input.breakerIcsKA <= 0.0
+     !isPositiveFinite(input.breakerIcsKA)
  ) {
 
      checks += EngineeringCheck(
@@ -3007,7 +3003,7 @@ import kotlin.math.tan
          calculatedValue = input.breakerIcsKA,
          unit = "kA",
          message =
-             "Breaker Ics must be greater than zero when supplied."
+             "Breaker Ics must be a finite value greater than zero when supplied."
      )
  }
 
