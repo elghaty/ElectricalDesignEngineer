@@ -24,561 +24,600 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun ShortCircuitScreen(
-    onBack: () -> Unit = {}
+onBack: () -> Unit = {}
 ) {
 
-    val project = ProjectManager.calculation
+val project = ProjectManager.calculation
 
-    // ============================================================
-    // INPUTS
-    // ============================================================
+// ============================================================
+// INPUTS
+// ============================================================
 
-    var transformerKVA by remember {
-        mutableStateOf(
-            if (project.transformerKVA > 0.0)
-                "%.0f".format(project.transformerKVA)
-            else
-                ""
-        )
-    }
+var transformerKVA by remember {
+    mutableStateOf(
+        if (project.transformerKVA > 0.0) {
+            "%.0f".format(project.transformerKVA)
+        } else {
+            ""
+        }
+    )
+}
 
-    var voltage by remember {
-        mutableStateOf(
-            if (project.voltageV > 0.0)
-                "%.0f".format(project.voltageV)
-            else
-                ""
-        )
-    }
+var voltage by remember {
+    mutableStateOf(
+        if (project.voltageV > 0.0) {
+            "%.0f".format(project.voltageV)
+        } else {
+            ""
+        }
+    )
+}
 
-    var impedancePercent by remember {
-        mutableStateOf(
-            if (project.transformerImpedancePercent > 0.0)
-                "%.2f".format(project.transformerImpedancePercent)
-            else
-                ""
-        )
-    }
+/*
+ * Use the verified transformer impedance already stored
+ * in the project when available.
+ *
+ * Zero means that no verified impedance has been supplied.
+ * No assumed value such as 6% is used.
+ */
+var impedancePercent by remember {
+    mutableStateOf(
+        if (project.transformerImpedancePercent > 0.0) {
+            "%.2f".format(
+                project.transformerImpedancePercent
+            )
+        } else {
+            ""
+        }
+    )
+}
 
-    // ============================================================
-    // RESULT
-    // ============================================================
+// ============================================================
+// RESULT
+// ============================================================
 
-    var resultText by remember {
-        mutableStateOf("")
-    }
+var resultText by remember {
+    mutableStateOf("")
+}
 
-    var faultCurrentKA by remember {
-        mutableStateOf(project.shortCircuitKA)
-    }
+var faultCurrentKA by remember {
+    mutableStateOf(
+        project.shortCircuitKA
+    )
+}
 
-    var ratedCurrentA by remember {
-        mutableStateOf(0.0)
-    }
+var ratedCurrentA by remember {
+    mutableStateOf(0.0)
+}
 
-    // ============================================================
-    // UI
-    // ============================================================
+// ============================================================
+// UI
+// ============================================================
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
+Column(
+    modifier = Modifier
+        .fillMaxSize()
+        .verticalScroll(rememberScrollState())
+        .padding(16.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp)
+) {
 
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
+    Text(
+        text = "Short Circuit Current",
+        style = MaterialTheme.typography.headlineSmall
+    )
 
-        Text(
-            text = "Short Circuit Current",
-            style = MaterialTheme.typography.headlineSmall
-        )
+    Text(
+        text = "Project: ${
+            project.projectName.ifBlank {
+                "Current Project"
+            }
+        }",
+        style = MaterialTheme.typography.bodyMedium
+    )
 
-        Text(
-            text = "Project: ${
-                project.projectName.ifBlank {
-                    "Current Project"
-                }
-            }",
-            style = MaterialTheme.typography.bodyMedium
-        )
+    HorizontalDivider()
 
-        HorizontalDivider()
+    // ========================================================
+    // TRANSFORMER DATA
+    // ========================================================
 
-        // ========================================================
-        // TRANSFORMER DATA
-        // ========================================================
+    Text(
+        text = "Transformer Data",
+        style = MaterialTheme.typography.titleMedium
+    )
 
-        Text(
-            text = "Transformer Data",
-            style = MaterialTheme.typography.titleMedium
-        )
+    OutlinedTextField(
+        value = transformerKVA,
+        onValueChange = {
+            transformerKVA = it
+        },
+        label = {
+            Text("Transformer Rating (kVA)")
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
 
-        OutlinedTextField(
-            value = transformerKVA,
-            onValueChange = {
-                transformerKVA = it
-            },
-            label = {
-                Text("Transformer Rating (kVA)")
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
+    OutlinedTextField(
+        value = voltage,
+        onValueChange = {
+            voltage = it
+        },
+        label = {
+            Text("LV Voltage (V)")
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
 
-        OutlinedTextField(
-            value = voltage,
-            onValueChange = {
-                voltage = it
-            },
-            label = {
-                Text("LV Voltage (V)")
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
+    OutlinedTextField(
+        value = impedancePercent,
+        onValueChange = {
+            impedancePercent = it
+        },
+        label = {
+            Text("Transformer Impedance (%Z)")
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
 
-        OutlinedTextField(
-            value = impedancePercent,
-            onValueChange = {
-                impedancePercent = it
-            },
-            label = {
-                Text("Transformer Impedance (%Z)")
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
+    Text(
+        text = if (
+            project.transformerImpedancePercent > 0.0
+        ) {
+            "Verified transformer %Z loaded from the current project. " +
+                "You may edit it only if the manufacturer's nameplate " +
+                "or verified technical data requires a correction."
+        } else {
+            "Enter the transformer manufacturer's nameplate/verified " +
+                "technical-data value for %Z. No value is assumed."
+        },
+        style = MaterialTheme.typography.bodySmall
+    )
 
-        Text(
-            text = "Use the transformer nameplate/manufacturer value for %Z.",
-            style = MaterialTheme.typography.bodySmall
-        )
+    // ========================================================
+    // CALCULATE
+    // ========================================================
 
-        // ========================================================
-        // CALCULATE
-        // ========================================================
+    Button(
+        onClick = {
 
-        Button(
-            onClick = {
+            val kva =
+                transformerKVA
+                    .toDoubleOrNull()
+                    ?.takeIf { it > 0.0 }
 
-                val kva =
-                    transformerKVA
-                        .toDoubleOrNull()
-                        ?.takeIf { it > 0.0 }
+            val v =
+                voltage
+                    .toDoubleOrNull()
+                    ?.takeIf { it > 0.0 }
 
-                val v =
-                    voltage
-                        .toDoubleOrNull()
-                        ?.takeIf { it > 0.0 }
+            val z =
+                impedancePercent
+                    .toDoubleOrNull()
+                    ?.takeIf { it > 0.0 }
 
-                val z =
-                    impedancePercent
-                        .toDoubleOrNull()
-                        ?.takeIf { it > 0.0 }
+            // ====================================================
+            // DATA VALIDATION
+            // ====================================================
 
-                if (kva == null || v == null || z == null) {
+            if (kva == null || v == null || z == null) {
 
-                    resultText =
-                        """
-                        DATA REQUIRED
+                resultText =
+                    """
+                    DATA REQUIRED
 
-                        Please enter:
+                    Please provide:
 
-                        • Transformer rating
-                        • LV voltage
-                        • Transformer %Z
+                    • Transformer rating
+                    • LV voltage
+                    • Transformer %Z from nameplate/manufacturer data
 
-                        No engineering value was assumed.
-                        """.trimIndent()
+                    No engineering value was assumed.
+                    """.trimIndent()
 
-                    faultCurrentKA = 0.0
-                    ratedCurrentA = 0.0
+                faultCurrentKA = 0.0
+                ratedCurrentA = 0.0
 
-                } else {
+            } else {
 
-                    // ====================================================
-                    // SAVE SYSTEM DATA
-                    // ====================================================
+                // =================================================
+                // SAVE SYSTEM DATA
+                // =================================================
 
-                    ProjectManager.updateSystem(
-                        voltageV = v
-                    )
+                ProjectManager.updateSystem(
+                    voltageV = v
+                )
 
-                    ProjectManager.setTransformer(
-                        transformerKVA = kva,
-                        transformerImpedancePercent = z
-                    )
+                ProjectManager.setTransformer(
+                    transformerKVA = kva,
+                    transformerImpedancePercent = z
+                )
 
-                    // ====================================================
-                    // TRANSFORMER RATED CURRENT
-                    // ====================================================
+                // =================================================
+                // TRANSFORMER RATED CURRENT
+                // =================================================
 
-                    ratedCurrentA =
-                        ProfessionalEngineeringCore.threePhaseCurrent(
+                ratedCurrentA =
+                    ProfessionalEngineeringCore
+                        .threePhaseCurrent(
                             kva = kva,
                             voltageV = v
                         )
 
-                    // ====================================================
-                    // PROFESSIONAL SHORT-CIRCUIT ENGINE
-                    // ====================================================
+                // =================================================
+                // PROFESSIONAL SHORT-CIRCUIT ENGINE
+                // =================================================
 
-                    val input =
-                        ShortCircuitInput(
+                val input =
+                    ShortCircuitInput(
 
-                            faultType =
-                                ShortCircuitFaultType.THREE_PHASE,
+                        faultType =
+                            ShortCircuitFaultType.THREE_PHASE,
 
-                            source =
-                                ShortCircuitSourceInput(
+                        source =
+                            ShortCircuitSourceInput(
 
-                                    transformerKVA = kva,
+                                transformerKVA = kva,
 
-                                    voltageV = v,
+                                voltageV = v,
 
-                                    transformerImpedancePercent = z,
+                                transformerImpedancePercent = z,
 
-                                    transformerResistancePercent = null,
+                                transformerResistancePercent = null,
 
-                                    transformerReactancePercent = null,
+                                transformerReactancePercent = null,
 
-                                    upstreamShortCircuitKA = null,
+                                upstreamShortCircuitKA = null,
 
-                                    upstreamResistanceOhm = null,
+                                upstreamResistanceOhm = null,
 
-                                    upstreamReactanceOhm = null
-                                ),
+                                upstreamReactanceOhm = null
+                            ),
 
-                            cable = null
+                        cable = null
+                    )
+
+                val calculation =
+                    ProfessionalEngineeringCore
+                        .calculateShortCircuit(
+                            input
                         )
 
-                    val calculation =
-                        ProfessionalEngineeringCore
-                            .calculateShortCircuit(input)
+                // =================================================
+                // RESULT
+                // =================================================
 
-                    // ====================================================
-                    // RESULT
-                    // ====================================================
+                faultCurrentKA =
+                    calculation.faultCurrentKA
 
-                    faultCurrentKA =
-                        calculation.faultCurrentKA
+                // =================================================
+                // SAVE VALID RESULT
+                // =================================================
 
-                    // ====================================================
-                    // SAVE RESULT ONLY IF VALID
-                    // ====================================================
+                if (
+                    calculation.status ==
+                    EngineeringStatus.PASS
+                ) {
 
-                    if (
-                        calculation.status ==
-                        EngineeringStatus.PASS
-                    ) {
+                    ProjectManager.setShortCircuit(
+                        shortCircuitKA =
+                            calculation.faultCurrentKA
+                    )
+                }
 
-                        ProjectManager.setShortCircuit(
-                            shortCircuitKA =
-                                calculation.faultCurrentKA
-                        )
+                // =================================================
+                // RESULT TEXT
+                // =================================================
+
+                val impedance =
+                    calculation.equivalentImpedance
+
+                val statusText =
+                    when (calculation.status) {
+
+                        EngineeringStatus.PASS ->
+                            "PASS"
+
+                        EngineeringStatus.FAIL ->
+                            "FAIL"
+
+                        EngineeringStatus.WARNING ->
+                            "WARNING"
+
+                        EngineeringStatus.DATA_REQUIRED ->
+                            "DATA REQUIRED"
+
+                        EngineeringStatus.NOT_CALCULATED ->
+                            "NOT CALCULATED"
                     }
 
-                    // ====================================================
-                    // BUILD RESULT TEXT
-                    // ====================================================
+                val checksText =
+                    if (calculation.checks.isEmpty()) {
 
-                    val impedance =
-                        calculation.equivalentImpedance
+                        "No checks returned."
 
-                    val statusText =
-                        when (calculation.status) {
+                    } else {
 
-                            EngineeringStatus.PASS ->
-                                "PASS"
+                        calculation.checks.joinToString(
+                            separator = "\n"
+                        ) { check ->
 
-                            EngineeringStatus.FAIL ->
-                                "FAIL"
-
-                            EngineeringStatus.WARNING ->
-                                "WARNING"
-
-                            EngineeringStatus.DATA_REQUIRED ->
-                                "DATA REQUIRED"
-
-                            EngineeringStatus.NOT_CALCULATED ->
-                                "NOT CALCULATED"
-                        }
-
-                    val checksText =
-                        if (calculation.checks.isEmpty()) {
-
-                            "No checks returned."
-
-                        } else {
-
-                            calculation.checks.joinToString(
-                                separator = "\n"
-                            ) { check ->
-
-                                val value =
-                                    check.calculatedValue
-                                        ?.let {
-                                            "%.4f".format(it)
-                                        }
-                                        ?: "-"
-
-                                "• ${check.name}: " +
-                                        "${check.status} | " +
-                                        "$value ${check.unit} | " +
-                                        check.message
-                            }
-                        }
-
-                    resultText =
-                        buildString {
-
-                            appendLine(
-                                "SHORT CIRCUIT CALCULATION"
-                            )
-
-                            appendLine()
-
-                            appendLine(
-                                "Status: $statusText"
-                            )
-
-                            appendLine()
-
-                            appendLine(
-                                "Transformer Rating: " +
-                                        "%.0f kVA".format(kva)
-                            )
-
-                            appendLine(
-                                "LV Voltage: " +
-                                        "%.0f V".format(v)
-                            )
-
-                            appendLine(
-                                "Transformer %Z: " +
-                                        "%.2f %%".format(z)
-                            )
-
-                            appendLine()
-
-                            appendLine(
-                                "Transformer Rated Current: " +
-                                        "%.2f A"
-                                            .format(ratedCurrentA)
-                            )
-
-                            appendLine()
-
-                            appendLine(
-                                "Prospective Short Circuit: " +
-                                        "%.3f kA"
-                                            .format(
-                                                calculation
-                                                    .faultCurrentKA
-                                            )
-                            )
-
-                            if (impedance != null) {
-
-                                appendLine()
-
-                                appendLine(
-                                    "Equivalent Impedance:"
-                                )
-
-                                appendLine(
-                                    "R = %.6f Ω"
-                                        .format(
-                                            impedance
-                                                .resistanceOhm
-                                        )
-                                )
-
-                                appendLine(
-                                    "X = %.6f Ω"
-                                        .format(
-                                            impedance
-                                                .reactanceOhm
-                                        )
-                                )
-
-                                appendLine(
-                                    "|Z| = %.6f Ω"
-                                        .format(
-                                            impedance
-                                                .magnitudeOhm
-                                        )
-                                )
-                            }
-
-                            appendLine()
-
-                            appendLine(
-                                "ENGINEERING CHECKS"
-                            )
-
-                            appendLine()
-
-                            appendLine(checksText)
-
-                            appendLine()
-
-                            appendLine(
-                                "Standard: " +
-                                        (
-                                            calculation.trace.standard
-                                                ?.code
-                                                ?: "Not specified"
-                                        )
-                            )
-
-                            if (
-                                calculation.trace
-                                    .assumptions
-                                    .isNotEmpty()
-                            ) {
-
-                                appendLine()
-
-                                appendLine(
-                                    "ASSUMPTIONS"
-                                )
-
-                                calculation.trace
-                                    .assumptions
-                                    .forEach {
-
-                                        appendLine(
-                                            "• $it"
-                                        )
+                            val value =
+                                check.calculatedValue
+                                    ?.let {
+                                        "%.4f".format(it)
                                     }
-                            }
+                                    ?: "-"
 
-                            if (
-                                calculation.trace
-                                    .warnings
-                                    .isNotEmpty()
-                            ) {
-
-                                appendLine()
-
-                                appendLine(
-                                    "WARNINGS"
-                                )
-
-                                calculation.trace
-                                    .warnings
-                                    .forEach {
-
-                                        appendLine(
-                                            "• $it"
-                                        )
-                                    }
-                            }
+                            "• ${check.name}: " +
+                                "${check.status} | " +
+                                "$value ${check.unit} | " +
+                                check.message
                         }
-                }
-            },
+                    }
 
-            modifier = Modifier.fillMaxWidth()
-        ) {
+                resultText =
+                    buildString {
 
-            Text(
-                text = "Calculate & Save Short Circuit"
-            )
-        }
+                        appendLine(
+                            "SHORT CIRCUIT CALCULATION"
+                        )
 
-        // ========================================================
-        // RESULT
-        // ========================================================
+                        appendLine()
 
-        if (resultText.isNotBlank()) {
+                        appendLine(
+                            "Status: $statusText"
+                        )
 
-            HorizontalDivider()
+                        appendLine()
 
-            Text(
-                text = resultText,
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
+                        appendLine(
+                            "Transformer Rating: " +
+                                "%.0f kVA".format(kva)
+                        )
 
-        // ========================================================
-        // CURRENT PROJECT RESULT
-        // ========================================================
+                        appendLine(
+                            "LV Voltage: " +
+                                "%.0f V".format(v)
+                        )
+
+                        appendLine(
+                            "Transformer %Z: " +
+                                "%.2f %%".format(z)
+                        )
+
+                        appendLine()
+
+                        appendLine(
+                            "Transformer Rated Current: " +
+                                "%.2f A".format(
+                                    ratedCurrentA
+                                )
+                        )
+
+                        appendLine()
+
+                        appendLine(
+                            "Prospective Short Circuit: " +
+                                "%.3f kA".format(
+                                    calculation
+                                        .faultCurrentKA
+                                )
+                        )
+
+                        if (impedance != null) {
+
+                            appendLine()
+
+                            appendLine(
+                                "Equivalent Impedance:"
+                            )
+
+                            appendLine(
+                                "R = %.6f Ω".format(
+                                    impedance.resistanceOhm
+                                )
+                            )
+
+                            appendLine(
+                                "X = %.6f Ω".format(
+                                    impedance.reactanceOhm
+                                )
+                            )
+
+                            appendLine(
+                                "|Z| = %.6f Ω".format(
+                                    impedance.magnitudeOhm
+                                )
+                            )
+                        }
+
+                        appendLine()
+
+                        appendLine(
+                            "ENGINEERING CHECKS"
+                        )
+
+                        appendLine()
+
+                        appendLine(
+                            checksText
+                        )
+
+                        appendLine()
+
+                        appendLine(
+                            "Standard: " +
+                                (
+                                    calculation
+                                        .trace
+                                        .standard
+                                        ?.code
+                                        ?: "Not specified"
+                                )
+                        )
+
+                        if (
+                            calculation
+                                .trace
+                                .assumptions
+                                .isNotEmpty()
+                        ) {
+
+                            appendLine()
+
+                            appendLine(
+                                "ASSUMPTIONS"
+                            )
+
+                            calculation
+                                .trace
+                                .assumptions
+                                .forEach {
+
+                                    appendLine(
+                                        "• $it"
+                                    )
+                                }
+                        }
+
+                        if (
+                            calculation
+                                .trace
+                                .warnings
+                                .isNotEmpty()
+                        ) {
+
+                            appendLine()
+
+                            appendLine(
+                                "WARNINGS"
+                            )
+
+                            calculation
+                                .trace
+                                .warnings
+                                .forEach {
+
+                                    appendLine(
+                                        "• $it"
+                                    )
+                                }
+                        }
+                    }
+            }
+        },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+
+        Text(
+            text = "Calculate & Save Short Circuit"
+        )
+    }
+
+    // ========================================================
+    // RESULT
+    // ========================================================
+
+    if (resultText.isNotBlank()) {
 
         HorizontalDivider()
 
         Text(
-            text = "Current Project Result",
-            style = MaterialTheme.typography.titleMedium
+            text = resultText,
+            style = MaterialTheme.typography.bodyMedium
         )
+    }
 
-        Text(
-            text =
-                "Transformer: %.0f kVA"
-                    .format(
-                        ProjectManager
-                            .calculation
-                            .transformerKVA
-                    )
-        )
+    // ========================================================
+    // CURRENT PROJECT RESULT
+    // ========================================================
 
-        Text(
-            text =
-                "Transformer %Z: %.2f %%"
-                    .format(
+    HorizontalDivider()
+
+    Text(
+        text = "Current Project Result",
+        style = MaterialTheme.typography.titleMedium
+    )
+
+    Text(
+        text =
+            "Transformer: %.0f kVA".format(
+                ProjectManager
+                    .calculation
+                    .transformerKVA
+            )
+    )
+
+    Text(
+        text =
+            "Transformer %Z: ${
+                if (
+                    ProjectManager
+                        .calculation
+                        .transformerImpedancePercent > 0.0
+                ) {
+                    "%.2f %%".format(
                         ProjectManager
                             .calculation
                             .transformerImpedancePercent
                     )
-        )
+                } else {
+                    "N/A - Manufacturer Data Required"
+                }
+            }"
+    )
 
-        Text(
-            text =
-                "Voltage: %.0f V"
-                    .format(
-                        ProjectManager
-                            .calculation
-                            .voltageV
-                    )
-        )
+    Text(
+        text =
+            "Voltage: %.0f V".format(
+                ProjectManager
+                    .calculation
+                    .voltageV
+            )
+    )
 
-        Text(
-            text =
-                "Transformer Rated Current: %.2f A"
-                    .format(ratedCurrentA)
-        )
+    Text(
+        text =
+            "Transformer Rated Current: %.2f A"
+                .format(
+                    ratedCurrentA
+                )
+    )
 
-        Text(
-            text =
-                "Short Circuit: %.3f kA"
-                    .format(
-                        ProjectManager
-                            .calculation
-                            .shortCircuitKA
-                    )
-        )
+    Text(
+        text =
+            "Short Circuit: %.3f kA".format(
+                ProjectManager
+                    .calculation
+                    .shortCircuitKA
+            )
+    )
 
-        Text(
-            text =
-                "Design Status: ${
-                    ProjectManager
-                        .calculation
-                        .designStatus
-                }"
-        )
+    Text(
+        text =
+            "Design Status: ${
+                ProjectManager
+                    .calculation
+                    .designStatus
+            }"
+    )
 
-        Spacer(
-            modifier = Modifier.height(10.dp)
-        )
+    Spacer(
+        modifier = Modifier.height(10.dp)
+    )
 
-        // ========================================================
-        // BACK
-        // ========================================================
+    // ========================================================
+    // BACK
+    // ========================================================
 
-        Button(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
-        ) {
+    Button(
+        onClick = onBack,
+        modifier = Modifier.fillMaxWidth()
+    ) {
 
-            Text("Back")
-        }
+        Text("Back")
     }
+}
+
 }
