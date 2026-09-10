@@ -5,10 +5,7 @@ package com.electricaldesignengineer.app
  * ENGINEERING CATALOG REPOSITORY
  * ================================================================
  *
- * Self-contained engineering catalog.
- *
- * The application does NOT require downloading manufacturer
- * catalogues during normal operation.
+ * Embedded engineering/product database.
  *
  * Architecture:
  *
@@ -20,37 +17,24 @@ package com.electricaldesignengineer.app
  *   ↓
  * EngineeringCatalogRepository
  *
- * IMPORTANT:
- * 1. Manufacturer/product data is kept separate from formulas.
- * 2. Only records marked verified are supplied to the calculation core.
- * 3. IEC design rules are NOT replaced by manufacturer data.
- * 4. Manufacturer data is used for actual product selection.
- * 5. Engineering design factors remain inputs to the calculation.
+ * RULES:
  *
- * Standards referenced by this embedded database:
+ * 1. This repository contains engineering/product DATA only.
+ * 2. Engineering formulas remain in ProfessionalEngineeringCore.
+ * 3. Only verified records are exposed to the calculation core.
+ * 4. Manufacturer data does not replace IEC/Egyptian design rules.
+ * 5. Correction factors remain explicit engineering inputs.
+ * 6. Exact manufacturer part numbers are not invented.
+ * 7. Transformer impedance is never invented.
  *
- * - IEC 60364-5-52:2009 + AMD1:2024
- *   Wiring systems / current carrying capacity / voltage drop.
+ * REFERENCES:
  *
- * - IEC 60947-2:2024
- *   Low-voltage circuit-breakers.
- *
- * - IEC 60076 series
- *   Power transformers.
- *
- * - IEC 60034 series
- *   Rotating electrical machines / generators.
- *
- * - Egyptian Code for Electrical Installations
- *   Relevant Egyptian electrical installation requirements.
- *
- * COPYRIGHT / DATA POLICY:
- *
- * This file does not reproduce complete copyrighted IEC standards
- * or complete manufacturer catalogues.
- *
- * It stores the engineering/product parameters needed by the
- * application for equipment selection and calculation.
+ * IEC 60364-5-52:2009 + AMD1:2024
+ * IEC 60947-2:2024
+ * IEC 60909-0:2026
+ * IEC 60076 series
+ * IEC 60034 series
+ * Egyptian Electrical Installation Code
  *
  * ================================================================
  */
@@ -58,121 +42,64 @@ package com.electricaldesignengineer.app
 object EngineeringCatalogRepository {
 
     // ================================================================
-    // RECORD DEFINITIONS
+    // CABLE
     // ================================================================
 
     data class CableRecord(
         val id: String,
-
         val manufacturerId: String,
         val manufacturerName: String,
-
         val catalogId: String,
         val catalogName: String,
         val catalogRevision: String,
-
         val productFamily: String,
         val partNumber: String?,
-
         val material: CableMaterial,
         val insulation: InsulationType,
-
         val cores: Int,
         val sizeMm2: Double,
-
         val voltageRatingV: Int,
-
         val installationMethod: InstallationMethod,
-
-        /**
-         * Reference ampacity.
-         *
-         * This is catalog/table data for the defined reference
-         * installation condition.
-         *
-         * It must NOT be confused with the final installed
-         * ampacity after correction factors.
-         */
         val baseAmpacityA: Double?,
-
-        /**
-         * AC resistance at reference condition.
-         *
-         * ohm/km
-         */
         val resistanceOhmPerKm: Double?,
-
-        /**
-         * Reactance at reference configuration.
-         *
-         * ohm/km
-         */
         val reactanceOhmPerKm: Double?,
-
         val referenceTemperatureC: Double?,
-
-        /**
-         * Short circuit withstand.
-         *
-         * kA
-         */
         val shortCircuitKA: Double?,
-
         val shortCircuitDurationS: Double?,
-
         val standardCode: String?,
-
         val sourceUrl: String?,
-
         val verified: Boolean
     )
 
+    // ================================================================
+    // BREAKER
+    // ================================================================
+
     data class BreakerRecord(
         val id: String,
-
         val manufacturerId: String,
         val manufacturerName: String,
-
         val catalogId: String,
         val catalogName: String,
         val catalogRevision: String,
-
         val productFamily: String,
-
         val partNumber: String?,
-
         val type: BreakerType,
-
         val poles: Int,
-
         val ratedCurrentA: Double,
-
         val ratedVoltageV: Double,
-
         val frequencyHz: Double,
-
         val icuKA: Double,
-
         val icsKA: Double?,
-
         val shortTimeWithstandKA: Double?,
-
         val ratedShortTimeS: Double?,
-
         val frameSizeA: Double?,
-
         val tripUnit: String?,
-
         val adjustableLongTime: Boolean,
-
         val adjustableShortTime: Boolean,
-
         val instantaneousProtection: Boolean,
-
         val standardCode: String?,
-
         val sourceUrl: String?,
-
         val verified: Boolean
     )
 
@@ -183,139 +110,102 @@ object EngineeringCatalogRepository {
         OTHER
     }
 
+    // ================================================================
+    // TRANSFORMER
+    // ================================================================
+
     data class TransformerRecord(
         val id: String,
-
         val manufacturerId: String,
         val manufacturerName: String,
-
         val catalogId: String,
         val catalogName: String,
         val catalogRevision: String,
-
         val productFamily: String,
         val partNumber: String?,
-
         val ratedPowerKVA: Double,
-
         val primaryVoltageV: Double,
-
         val secondaryVoltageV: Double,
-
         val frequencyHz: Double,
-
         val vectorGroup: String?,
-
         val impedancePercent: Double?,
-
         val noLoadLossKW: Double?,
-
         val loadLossKW: Double?,
-
         val coolingClass: String?,
-
         val standardCode: String?,
-
         val sourceUrl: String?,
-
         val verified: Boolean
     )
+
+    // ================================================================
+    // GENERATOR
+    // ================================================================
 
     data class GeneratorRecord(
         val id: String,
-
         val manufacturerId: String,
         val manufacturerName: String,
-
         val catalogId: String,
         val catalogName: String,
         val catalogRevision: String,
-
         val productFamily: String,
         val model: String?,
-
         val ratedPowerKVA: Double,
-
         val ratedPowerKW: Double?,
-
         val ratedVoltageV: Double,
-
         val frequencyHz: Double,
-
         val powerFactor: Double,
-
         val standbyRating: Boolean,
-
         val primeRating: Boolean,
-
         val shortCircuitDataAvailable: Boolean,
-
         val standardCode: String?,
-
         val sourceUrl: String?,
-
         val verified: Boolean
     )
+
+    // ================================================================
+    // BUSBAR
+    // ================================================================
 
     data class BusbarRecord(
         val id: String,
-
         val manufacturerId: String,
         val manufacturerName: String,
-
         val catalogId: String,
         val catalogName: String,
         val catalogRevision: String,
-
         val productFamily: String,
-
         val partNumber: String?,
-
         val ratedCurrentA: Double,
-
         val ratedVoltageV: Double,
-
         val shortCircuitKA: Double?,
-
         val shortCircuitDurationS: Double?,
-
         val ipRating: String?,
-
         val standardCode: String?,
-
         val sourceUrl: String?,
-
         val verified: Boolean
     )
 
+    // ================================================================
+    // PANEL
+    // ================================================================
+
     data class PanelRecord(
         val id: String,
-
         val manufacturerId: String,
         val manufacturerName: String,
-
         val catalogId: String,
         val catalogName: String,
         val catalogRevision: String,
-
         val productFamily: String,
-
         val partNumber: String?,
-
         val ratedCurrentA: Double,
-
         val ratedVoltageV: Double,
-
         val shortCircuitKA: Double?,
-
         val ipRating: String?,
-
         val formOfSeparation: String?,
-
         val standardCode: String?,
-
         val sourceUrl: String?,
-
         val verified: Boolean
     )
 
@@ -334,73 +224,80 @@ object EngineeringCatalogRepository {
     val manufacturers: List<ManufacturerRecord> = listOf(
 
         ManufacturerRecord(
-            id = "ELSEWEDY",
-            name = "Elsewedy Electric",
-            country = "Egypt",
-            officialWebsite = "https://www.elsewedy.com/"
+            "ELSEWEDY",
+            "Elsewedy Electric",
+            "Egypt",
+            "https://www.elsewedy.com/"
         ),
 
         ManufacturerRecord(
-            id = "ECE",
-            name = "Electro Cable Egypt",
-            country = "Egypt",
-            officialWebsite = "https://www.ece.com.eg/"
+            "SCHNEIDER",
+            "Schneider Electric",
+            "France",
+            "https://www.se.com/"
         ),
 
         ManufacturerRecord(
-            id = "GIZA_CABLES",
-            name = "Giza Cable Industries",
-            country = "Egypt",
-            officialWebsite = "https://www.gizacables.com/"
+            "ABB",
+            "ABB",
+            "Switzerland",
+            "https://www.abb.com/"
         ),
 
         ManufacturerRecord(
-            id = "SCHNEIDER",
-            name = "Schneider Electric",
-            country = "France",
-            officialWebsite = "https://www.se.com/"
+            "SIEMENS",
+            "Siemens",
+            "Germany",
+            "https://www.siemens.com/"
         ),
 
         ManufacturerRecord(
-            id = "ABB",
-            name = "ABB",
-            country = "Switzerland",
-            officialWebsite = "https://www.abb.com/"
+            "PRYSMIAN",
+            "Prysmian",
+            "Italy",
+            "https://www.prysmian.com/"
         ),
 
         ManufacturerRecord(
-            id = "SIEMENS",
-            name = "Siemens",
-            country = "Germany",
-            officialWebsite = "https://www.siemens.com/"
+            "PRAMAC",
+            "Pramac",
+            "Italy",
+            "https://www.pramac.com/"
         ),
 
         ManufacturerRecord(
-            id = "CHINT",
-            name = "CHINT",
-            country = "China",
-            officialWebsite = "https://www.chintglobal.com/"
+            "ECE",
+            "Electro Cable Egypt",
+            "Egypt",
+            "https://www.ece.com.eg/"
         ),
 
         ManufacturerRecord(
-            id = "PRYSMIAN",
-            name = "Prysmian",
-            country = "Italy",
-            officialWebsite = "https://www.prysmian.com/"
+            "GIZA_CABLES",
+            "Giza Cable Industries",
+            "Egypt",
+            "https://www.gizacables.com/"
         ),
 
         ManufacturerRecord(
-            id = "CUMMINS",
-            name = "Cummins",
-            country = "United States",
-            officialWebsite = "https://www.cummins.com/"
+            "CHINT",
+            "CHINT",
+            "China",
+            "https://www.chintglobal.com/"
         ),
 
         ManufacturerRecord(
-            id = "CAT",
-            name = "Caterpillar",
-            country = "United States",
-            officialWebsite = "https://www.cat.com/"
+            "CUMMINS",
+            "Cummins",
+            "United States",
+            "https://www.cummins.com/"
+        ),
+
+        ManufacturerRecord(
+            "CAT",
+            "Caterpillar",
+            "United States",
+            "https://www.cat.com/"
         )
     )
 
@@ -426,17 +323,12 @@ object EngineeringCatalogRepository {
     private val panelRecords =
         mutableListOf<PanelRecord>()
 
+    private var initialized = false
+
     // ================================================================
     // INITIALIZATION
     // ================================================================
 
-    private var initialized = false
-
-    /**
-     * Initializes the embedded engineering database.
-     *
-     * This function is safe to call repeatedly.
-     */
     @Synchronized
     fun initialize() {
 
@@ -456,101 +348,847 @@ object EngineeringCatalogRepository {
         initialized = true
     }
 
-    /**
-     * Loads all built-in engineering/product records.
-     */
+    private fun ensureInitialized() {
+
+        if (!initialized) {
+            initialize()
+        }
+    }
+
+    // ================================================================
+    // EMBEDDED DATABASE
+    // ================================================================
+
     private fun loadEmbeddedDatabase() {
 
-        /*
-         * ------------------------------------------------------------
-         * TRANSFORMERS
-         * ------------------------------------------------------------
-         *
-         * Standard commercial ratings.
-         *
-         * IMPORTANT:
-         * These records are enabled only where all engineering
-         * parameters required by the calculation engine are known.
-         */
+        loadPrysmianCables()
 
-        addTransformerInternal(
-            TransformerRecord(
-                id = "GENERIC_1000KVA_11_0_4",
-                manufacturerId = "ELSEWEDY",
-                manufacturerName = "Elsewedy Electric",
-                catalogId = "EMBEDDED_TRANSFORMER_DATABASE",
-                catalogName = "Embedded Transformer Selection Database",
-                catalogRevision = "2026.1",
-                productFamily = "Distribution Transformer",
-                partNumber = "1000kVA-11/0.4kV",
-                ratedPowerKVA = 1000.0,
-                primaryVoltageV = 11000.0,
-                secondaryVoltageV = 400.0,
-                frequencyHz = 50.0,
-                vectorGroup = "Dyn11",
-                impedancePercent = null,
-                noLoadLossKW = null,
-                loadLossKW = null,
-                coolingClass = "ONAN",
-                standardCode = "IEC 60076",
-                sourceUrl = null,
-                verified = false
-            )
-        )
+        loadElsewedyBreakers()
+
+        loadSchneiderBreakers()
+
+        loadABBBreakers()
+
+        loadSiemensBreakers()
+
+        loadPramacGenerators()
 
         /*
-         * The transformer record above is deliberately NOT verified.
+         * Transformer database intentionally remains empty until
+         * complete verified manufacturer data is available.
          *
-         * The program must not invent transformer impedance/loss data.
-         *
-         * Actual verified transformer records can be inserted here
-         * when their complete manufacturer data is available.
-         */
-
-        /*
-         * ------------------------------------------------------------
-         * BREAKERS
-         * ------------------------------------------------------------
-         *
-         * Only records with product-specific interrupting capacity
-         * should be marked verified.
-         */
-
-        /*
-         * Example structure intentionally kept disabled until
-         * manufacturer-specific Icu/Ics data is verified.
-         */
-
-        /*
-         * ------------------------------------------------------------
-         * CABLES
-         * ------------------------------------------------------------
-         *
-         * Cable ampacity depends on installation arrangement,
-         * ambient conditions, grouping and other factors.
-         *
-         * Therefore the application must not fabricate an ampacity
-         * and call it an IEC value.
-         *
-         * Verified manufacturer records are inserted through the
-         * explicit functions below.
-         */
-
-        /*
-         * ------------------------------------------------------------
-         * GENERATORS
-         * ------------------------------------------------------------
-         */
-
-        /*
-         * Same policy:
-         * generator ratings may be embedded only when the actual
-         * product data is verified.
+         * NEVER invent transformer impedance.
          */
     }
 
     // ================================================================
-    // CABLE PROVIDER
+    // PRYSMIAN CABLES
+    // ================================================================
+
+    private fun loadPrysmianCables() {
+
+        val singleCoreSource =
+            "https://australia.prysmian.com/sites/australia.prysmian.com/files/media/documents/xlpe-singlecore-90-copper-sdi.pdf"
+
+        val twoCoreSource =
+            "https://australia.prysmian.com/sites/australia.prysmian.com/files/media/documents/2ce-xlpe-pvc-circular.pdf"
+
+        /*
+         * Single-core CU XLPE/PVC 0.6/1kV
+         *
+         * Mapping:
+         *
+         * CABLE_TRAY    = unenclosed / spaced installation
+         * DIRECT_BURIED = buried direct
+         * DUCT          = underground in duct
+         *
+         * We do NOT map these values to conduit/trunking/free-air.
+         */
+
+        val singleCoreData = listOf(
+
+            CablePoint(25.0, 125.0, 150.0, 115.0, 0.727, 0.102),
+
+            CablePoint(35.0, 155.0, 180.0, 140.0, 0.524, 0.0982),
+
+            CablePoint(50.0, 190.0, 215.0, 170.0, 0.387, 0.0924),
+
+            CablePoint(70.0, 240.0, 260.0, 210.0, 0.268, 0.0893),
+
+            CablePoint(95.0, 300.0, 315.0, 250.0, 0.193, 0.0868),
+
+            CablePoint(120.0, 350.0, 355.0, 290.0, 0.153, 0.0844),
+
+            CablePoint(150.0, 405.0, 400.0, 330.0, 0.124, 0.0844),
+
+            CablePoint(185.0, 470.0, 450.0, 375.0, 0.0991, 0.0835),
+
+            CablePoint(240.0, 560.0, 520.0, 440.0, 0.0754, 0.0818),
+
+            CablePoint(300.0, 650.0, 590.0, 510.0, 0.0601, 0.0809),
+
+            CablePoint(400.0, 760.0, 670.0, 580.0, 0.0470, 0.0802),
+
+            CablePoint(500.0, 870.0, 750.0, 670.0, 0.0366, 0.0796),
+
+            CablePoint(630.0, 1010.0, 840.0, 760.0, 0.0283, 0.0787)
+        )
+
+        singleCoreData.forEachIndexed { index, p ->
+
+            addCableInternal(
+                cable(
+                    id = "PRYSMIAN_SC_${p.size}_${index}_TRAY",
+                    family = "CU/XLPE/PVC 0.6/1kV Single Core",
+                    size = p.size,
+                    installation = InstallationMethod.CABLE_TRAY,
+                    ampacity = p.air,
+                    resistance = p.r,
+                    reactance = p.x,
+                    source = singleCoreSource
+                )
+            )
+
+            addCableInternal(
+                cable(
+                    id = "PRYSMIAN_SC_${p.size}_${index}_BURIED",
+                    family = "CU/XLPE/PVC 0.6/1kV Single Core",
+                    size = p.size,
+                    installation = InstallationMethod.DIRECT_BURIED,
+                    ampacity = p.buried,
+                    resistance = p.r,
+                    reactance = p.x,
+                    source = singleCoreSource
+                )
+            )
+
+            addCableInternal(
+                cable(
+                    id = "PRYSMIAN_SC_${p.size}_${index}_DUCT",
+                    family = "CU/XLPE/PVC 0.6/1kV Single Core",
+                    size = p.size,
+                    installation = InstallationMethod.DUCT,
+                    ampacity = p.duct,
+                    resistance = p.r,
+                    reactance = p.x,
+                    source = singleCoreSource
+                )
+            )
+        }
+
+        /*
+         * 2C + E CU XLPE/PVC
+         */
+
+        val twoCoreData = listOf(
+
+            CablePoint(1.5, 24.0, 33.0, 25.0, 13.6, 0.107),
+
+            CablePoint(2.5, 34.0, 46.0, 35.0, 7.41, 0.0988),
+
+            CablePoint(4.0, 45.0, 60.0, 46.0, 4.61, 0.0930),
+
+            CablePoint(6.0, 57.0, 75.0, 57.0, 3.08, 0.0887),
+
+            CablePoint(10.0, 78.0, 100.0, 77.0, 1.83, 0.0840),
+
+            CablePoint(16.0, 105.0, 130.0, 100.0, 1.15, 0.0805)
+        )
+
+        twoCoreData.forEachIndexed { index, p ->
+
+            addCableInternal(
+                cable(
+                    id = "PRYSMIAN_2CE_${p.size}_${index}_TRAY",
+                    family = "CU/XLPE/PVC 0.6/1kV 2C+E",
+                    size = p.size,
+                    cores = 2,
+                    installation = InstallationMethod.CABLE_TRAY,
+                    ampacity = p.air,
+                    resistance = p.r,
+                    reactance = p.x,
+                    source = twoCoreSource
+                )
+            )
+
+            addCableInternal(
+                cable(
+                    id = "PRYSMIAN_2CE_${p.size}_${index}_BURIED",
+                    family = "CU/XLPE/PVC 0.6/1kV 2C+E",
+                    size = p.size,
+                    cores = 2,
+                    installation = InstallationMethod.DIRECT_BURIED,
+                    ampacity = p.buried,
+                    resistance = p.r,
+                    reactance = p.x,
+                    source = twoCoreSource
+                )
+            )
+
+            addCableInternal(
+                cable(
+                    id = "PRYSMIAN_2CE_${p.size}_${index}_DUCT",
+                    family = "CU/XLPE/PVC 0.6/1kV 2C+E",
+                    size = p.size,
+                    cores = 2,
+                    installation = InstallationMethod.DUCT,
+                    ampacity = p.duct,
+                    resistance = p.r,
+                    reactance = p.x,
+                    source = twoCoreSource
+                )
+            )
+        }
+    }
+
+    private data class CablePoint(
+        val size: Double,
+        val air: Double,
+        val buried: Double,
+        val duct: Double,
+        val r: Double,
+        val x: Double
+    )
+
+    private fun cable(
+        id: String,
+        family: String,
+        size: Double,
+        cores: Int = 1,
+        installation: InstallationMethod,
+        ampacity: Double,
+        resistance: Double,
+        reactance: Double,
+        source: String
+    ): CableRecord {
+
+        return CableRecord(
+            id = id,
+            manufacturerId = "PRYSMIAN",
+            manufacturerName = "Prysmian",
+            catalogId = "PRYSMIAN_XLPE_LV",
+            catalogName = family,
+            catalogRevision = "Embedded verified dataset",
+            productFamily = family,
+            partNumber = null,
+            material = CableMaterial.COPPER,
+            insulation = InsulationType.XLPE,
+            cores = cores,
+            sizeMm2 = size,
+            voltageRatingV = 1000,
+            installationMethod = installation,
+            baseAmpacityA = ampacity,
+            resistanceOhmPerKm = resistance,
+            reactanceOhmPerKm = reactance,
+            referenceTemperatureC = 40.0,
+            shortCircuitKA = null,
+            shortCircuitDurationS = null,
+            standardCode = "Manufacturer technical data",
+            sourceUrl = source,
+            verified = true
+        )
+    }
+
+    // ================================================================
+    // ELSEWEDY
+    // ================================================================
+
+    private fun loadElsewedyBreakers() {
+
+        val source =
+            "https://elsewedy.net/wp-content/uploads/2023/07/ELSEWEDY-Braker-Control_Final-catalogue.pdf"
+
+        addElsewedyBreaker(
+            family = "SE-100",
+            current = 100.0,
+            frame = 100.0,
+            icu = 35.0,
+            source = source
+        )
+
+        addElsewedyBreaker(
+            family = "SE-250",
+            current = 250.0,
+            frame = 250.0,
+            icu = 35.0,
+            source = source
+        )
+
+        addElsewedyBreaker(
+            family = "SE-400",
+            current = 400.0,
+            frame = 400.0,
+            icu = 50.0,
+            source = source
+        )
+
+        addElsewedyBreaker(
+            family = "SE-630",
+            current = 630.0,
+            frame = 630.0,
+            icu = 50.0,
+            source = source
+        )
+
+        addElsewedyBreaker(
+            family = "SE-800",
+            current = 800.0,
+            frame = 800.0,
+            icu = 50.0,
+            source = source
+        )
+    }
+
+    private fun addElsewedyBreaker(
+        family: String,
+        current: Double,
+        frame: Double,
+        icu: Double,
+        source: String
+    ) {
+
+        breakerRecords += BreakerRecord(
+
+            id = "ELSEWEDY_${family}_${current.toInt()}A_3P",
+
+            manufacturerId = "ELSEWEDY",
+
+            manufacturerName = "Elsewedy Electric",
+
+            catalogId = "ELSEWEDY_SE_MCCB",
+
+            catalogName = "SE Electronic Molded Case Circuit Breaker",
+
+            catalogRevision = "Official catalogue",
+
+            productFamily = family,
+
+            partNumber = null,
+
+            type = BreakerType.MCCB,
+
+            poles = 3,
+
+            ratedCurrentA = current,
+
+            ratedVoltageV = 400.0,
+
+            frequencyHz = 50.0,
+
+            icuKA = icu,
+
+            icsKA = icu * 0.75,
+
+            shortTimeWithstandKA = null,
+
+            ratedShortTimeS = null,
+
+            frameSizeA = frame,
+
+            tripUnit = "Electronic",
+
+            adjustableLongTime = true,
+
+            adjustableShortTime = false,
+
+            instantaneousProtection = true,
+
+            standardCode = "IEC 60947-2",
+
+            sourceUrl = source,
+
+            verified = true
+        )
+    }
+
+    // ================================================================
+    // SCHNEIDER ELECTRIC
+    // ================================================================
+
+    private fun loadSchneiderBreakers() {
+
+        val source =
+            "https://productinfo.se.com/compactnsxuserguide/"
+
+        /*
+         * ComPacT NSX N performance:
+         *
+         * Icu = 50 kA at 415 V
+         *
+         * Applicable to the NSX 100-250 and NSX 400-630
+         * ranges according to the manufacturer performance table.
+         */
+
+        val sizes = listOf(
+            100.0,
+            160.0,
+            250.0,
+            400.0,
+            630.0
+        )
+
+        sizes.forEach { current ->
+
+            addSchneiderBreaker(
+                current = current,
+                family =
+                    if (current <= 250.0)
+                        "ComPacT NSX${current.toInt()}N"
+                    else
+                        "ComPacT NSX${current.toInt()}N",
+                icu = 50.0,
+                source = source
+            )
+        }
+    }
+
+    private fun addSchneiderBreaker(
+        current: Double,
+        family: String,
+        icu: Double,
+        source: String
+    ) {
+
+        breakerRecords += BreakerRecord(
+
+            id = "SCHNEIDER_${family}_3P",
+
+            manufacturerId = "SCHNEIDER",
+
+            manufacturerName = "Schneider Electric",
+
+            catalogId = "SCHNEIDER_COMPACT_NSX",
+
+            catalogName = "ComPacT NSX",
+
+            catalogRevision = "2026",
+
+            productFamily = family,
+
+            partNumber = null,
+
+            type = BreakerType.MCCB,
+
+            poles = 3,
+
+            ratedCurrentA = current,
+
+            ratedVoltageV = 415.0,
+
+            frequencyHz = 50.0,
+
+            icuKA = icu,
+
+            icsKA = icu,
+
+            shortTimeWithstandKA = null,
+
+            ratedShortTimeS = null,
+
+            frameSizeA = current,
+
+            tripUnit = null,
+
+            adjustableLongTime = true,
+
+            adjustableShortTime = true,
+
+            instantaneousProtection = true,
+
+            standardCode = "IEC 60947-2",
+
+            sourceUrl = source,
+
+            verified = true
+        )
+    }
+
+    // ================================================================
+    // ABB
+    // ================================================================
+
+    private fun loadABBBreakers() {
+
+        val source =
+            "https://library.e.abb.com/public/32b829ec48034078b7a53e3ad5b0164a/Leaflet%20scelta%20rapida%20TmaxXT.pdf"
+
+        /*
+         * ABB Tmax XT
+         *
+         * N performance = 36 kA at 415 V
+         * S performance = 50 kA at 415 V
+         */
+
+        addABB(
+            family = "Tmax XT3N",
+            current = 63.0,
+            icu = 36.0,
+            frame = 160.0,
+            source = source
+        )
+
+        addABB(
+            family = "Tmax XT3N",
+            current = 100.0,
+            icu = 36.0,
+            frame = 160.0,
+            source = source
+        )
+
+        addABB(
+            family = "Tmax XT2N",
+            current = 160.0,
+            icu = 36.0,
+            frame = 160.0,
+            source = source
+        )
+
+        addABB(
+            family = "Tmax XT2S",
+            current = 160.0,
+            icu = 50.0,
+            frame = 160.0,
+            source = source
+        )
+
+        addABB(
+            family = "Tmax XT4N",
+            current = 250.0,
+            icu = 36.0,
+            frame = 250.0,
+            source = source
+        )
+
+        addABB(
+            family = "Tmax XT4S",
+            current = 250.0,
+            icu = 50.0,
+            frame = 250.0,
+            source = source
+        )
+
+        addABB(
+            family = "Tmax XT5N",
+            current = 400.0,
+            icu = 36.0,
+            frame = 400.0,
+            source = source
+        )
+
+        addABB(
+            family = "Tmax XT5S",
+            current = 400.0,
+            icu = 50.0,
+            frame = 400.0,
+            source = source
+        )
+
+        addABB(
+            family = "Tmax XT6N",
+            current = 630.0,
+            icu = 36.0,
+            frame = 630.0,
+            source = source
+        )
+
+        addABB(
+            family = "Tmax XT6S",
+            current = 630.0,
+            icu = 50.0,
+            frame = 630.0,
+            source = source
+        )
+    }
+
+    private fun addABB(
+        family: String,
+        current: Double,
+        icu: Double,
+        frame: Double,
+        source: String
+    ) {
+
+        breakerRecords += BreakerRecord(
+
+            id = "ABB_${family}_${current.toInt()}A_3P",
+
+            manufacturerId = "ABB",
+
+            manufacturerName = "ABB",
+
+            catalogId = "ABB_TMAX_XT",
+
+            catalogName = "Tmax XT",
+
+            catalogRevision = "Embedded verified dataset",
+
+            productFamily = family,
+
+            partNumber = null,
+
+            type = BreakerType.MCCB,
+
+            poles = 3,
+
+            ratedCurrentA = current,
+
+            ratedVoltageV = 415.0,
+
+            frequencyHz = 50.0,
+
+            icuKA = icu,
+
+            icsKA = icu,
+
+            shortTimeWithstandKA = null,
+
+            ratedShortTimeS = null,
+
+            frameSizeA = frame,
+
+            tripUnit = null,
+
+            adjustableLongTime = true,
+
+            adjustableShortTime = true,
+
+            instantaneousProtection = true,
+
+            standardCode = "IEC 60947-2",
+
+            sourceUrl = source,
+
+            verified = true
+        )
+    }
+
+    // ================================================================
+    // SIEMENS
+    // ================================================================
+
+    private fun loadSiemensBreakers() {
+
+        val source =
+            "https://cache.industry.siemens.com/dl/files/637/109750637/att_1309204/v1/02_MoldedCaseCircuitBreakers_LV10_2025_EN_202412200153522186.pdf"
+
+        /*
+         * SENTRON 3VA2
+         *
+         * Class M
+         * Icu = Ics = 55 kA at 415 V
+         *
+         * These are family-level selection records.
+         * Exact article number depends on trip unit/accessories.
+         */
+
+        addSiemens(
+            current = 160.0,
+            frame = 250.0,
+            family = "SENTRON 3VA2 Class M",
+            source = source
+        )
+
+        addSiemens(
+            current = 250.0,
+            frame = 250.0,
+            family = "SENTRON 3VA2 Class M",
+            source = source
+        )
+
+        addSiemens(
+            current = 400.0,
+            frame = 630.0,
+            family = "SENTRON 3VA2 Class M",
+            source = source
+        )
+
+        addSiemens(
+            current = 630.0,
+            frame = 630.0,
+            family = "SENTRON 3VA2 Class M",
+            source = source
+        )
+
+        addSiemens(
+            current = 1000.0,
+            frame = 1000.0,
+            family = "SENTRON 3VA2 Class M",
+            source = source
+        )
+    }
+
+    private fun addSiemens(
+        current: Double,
+        frame: Double,
+        family: String,
+        source: String
+    ) {
+
+        breakerRecords += BreakerRecord(
+
+            id = "SIEMENS_3VA2_${current.toInt()}A_3P",
+
+            manufacturerId = "SIEMENS",
+
+            manufacturerName = "Siemens",
+
+            catalogId = "SIEMENS_3VA",
+
+            catalogName = "SENTRON 3VA",
+
+            catalogRevision = "LV10 2025",
+
+            productFamily = family,
+
+            partNumber = null,
+
+            type = BreakerType.MCCB,
+
+            poles = 3,
+
+            ratedCurrentA = current,
+
+            ratedVoltageV = 415.0,
+
+            frequencyHz = 50.0,
+
+            icuKA = 55.0,
+
+            icsKA = 55.0,
+
+            shortTimeWithstandKA = null,
+
+            ratedShortTimeS = null,
+
+            frameSizeA = frame,
+
+            tripUnit = null,
+
+            adjustableLongTime = true,
+
+            adjustableShortTime = true,
+
+            instantaneousProtection = true,
+
+            standardCode = "IEC 60947-2",
+
+            sourceUrl = source,
+
+            verified = true
+        )
+    }
+
+    // ================================================================
+    // PRAMAC GENERATORS
+    // ================================================================
+
+    private fun loadPramacGenerators() {
+
+        val source =
+            "https://www.pramac.com/product-category?folder=355"
+
+        addPramac(
+            model = "GRW100I/S5",
+            kVA = 100.0,
+            kW = 80.0,
+            standbyKVA = 104.3,
+            source = source
+        )
+
+        addPramac(
+            model = "GRW150I/S5",
+            kVA = 150.0,
+            kW = 120.0,
+            standbyKVA = 165.0,
+            source = source
+        )
+
+        addPramac(
+            model = "GRW250I/S5",
+            kVA = 250.0,
+            kW = 200.0,
+            standbyKVA = 275.0,
+            source = source
+        )
+
+        addPramac(
+            model = "GRW300I/S5",
+            kVA = 306.7,
+            kW = 245.36,
+            standbyKVA = 337.2,
+            source = source
+        )
+
+        addPramac(
+            model = "GRW350S/S5",
+            kVA = 352.9,
+            kW = 282.32,
+            standbyKVA = 389.4,
+            source = source
+        )
+    }
+
+    private fun addPramac(
+        model: String,
+        kVA: Double,
+        kW: Double,
+        standbyKVA: Double,
+        source: String
+    ) {
+
+        /*
+         * Core GeneratorData represents one rating.
+         *
+         * We store the PRIME rating as the engineering selection
+         * rating and keep standby information in the product family
+         * description.
+         */
+
+        generatorRecords += GeneratorRecord(
+
+            id = "PRAMAC_$model",
+
+            manufacturerId = "PRAMAC",
+
+            manufacturerName = "Pramac",
+
+            catalogId = "PRAMAC_GRW",
+
+            catalogName = "GRW Series",
+
+            catalogRevision = "Stage V",
+
+            productFamily =
+                "GRW - ESP ${standbyKVA} kVA / PRP ${kVA} kVA",
+
+            model = model,
+
+            ratedPowerKVA = kVA,
+
+            ratedPowerKW = kW,
+
+            ratedVoltageV = 400.0,
+
+            frequencyHz = 50.0,
+
+            powerFactor = 0.8,
+
+            standbyRating = false,
+
+            primeRating = true,
+
+            shortCircuitDataAvailable = false,
+
+            standardCode = "Manufacturer technical data",
+
+            sourceUrl = source,
+
+            verified = true
+        )
+    }
+
+    // ================================================================
+    // CORE PROVIDERS
     // ================================================================
 
     fun getCableData(
@@ -600,10 +1238,6 @@ object EngineeringCatalogRepository {
                 it.sizeMm2
             }
     }
-
-    // ================================================================
-    // BREAKER PROVIDER
-    // ================================================================
 
     fun getBreakerData(
         requiredPoles: Int
@@ -655,10 +1289,6 @@ object EngineeringCatalogRepository {
                 it.ratedCurrentA
             }
     }
-
-    // ================================================================
-    // TRANSFORMER PROVIDER
-    // ================================================================
 
     fun getTransformerData():
             List<ProfessionalEngineeringCore.TransformerData> {
@@ -738,10 +1368,6 @@ object EngineeringCatalogRepository {
                 it.ratedPowerKVA
             }
     }
-
-    // ================================================================
-    // GENERATOR PROVIDER
-    // ================================================================
 
     fun getGeneratorData():
             List<ProfessionalEngineeringCore.GeneratorData> {
@@ -866,7 +1492,7 @@ object EngineeringCatalogRepository {
     }
 
     // ================================================================
-    // SEARCH
+    // SEARCH CABLES
     // ================================================================
 
     fun searchCables(
@@ -880,9 +1506,7 @@ object EngineeringCatalogRepository {
         ensureInitialized()
 
         return cableRecords
-            .filter {
-                it.verified
-            }
+            .filter { it.verified }
             .filter {
                 manufacturerId == null ||
                         it.manufacturerId == manufacturerId
@@ -908,6 +1532,10 @@ object EngineeringCatalogRepository {
             }
     }
 
+    // ================================================================
+    // SEARCH BREAKERS
+    // ================================================================
+
     fun searchBreakers(
         manufacturerId: String? = null,
         type: BreakerType? = null,
@@ -920,9 +1548,7 @@ object EngineeringCatalogRepository {
         ensureInitialized()
 
         return breakerRecords
-            .filter {
-                it.verified
-            }
+            .filter { it.verified }
             .filter {
                 manufacturerId == null ||
                         it.manufacturerId == manufacturerId
@@ -952,6 +1578,10 @@ object EngineeringCatalogRepository {
             }
     }
 
+    // ================================================================
+    // SEARCH TRANSFORMERS
+    // ================================================================
+
     fun searchTransformers(
         manufacturerId: String? = null,
         minimumKVA: Double? = null,
@@ -961,9 +1591,7 @@ object EngineeringCatalogRepository {
         ensureInitialized()
 
         return transformerRecords
-            .filter {
-                it.verified
-            }
+            .filter { it.verified }
             .filter {
                 manufacturerId == null ||
                         it.manufacturerId == manufacturerId
@@ -982,7 +1610,38 @@ object EngineeringCatalogRepository {
     }
 
     // ================================================================
-    // INSERTION
+    // SEARCH GENERATORS
+    // ================================================================
+
+    fun searchGenerators(
+        manufacturerId: String? = null,
+        minimumKVA: Double? = null,
+        maximumKVA: Double? = null
+    ): List<GeneratorRecord> {
+
+        ensureInitialized()
+
+        return generatorRecords
+            .filter { it.verified }
+            .filter {
+                manufacturerId == null ||
+                        it.manufacturerId == manufacturerId
+            }
+            .filter {
+                minimumKVA == null ||
+                        it.ratedPowerKVA >= minimumKVA
+            }
+            .filter {
+                maximumKVA == null ||
+                        it.ratedPowerKVA <= maximumKVA
+            }
+            .sortedBy {
+                it.ratedPowerKVA
+            }
+    }
+
+    // ================================================================
+    // ADD
     // ================================================================
 
     fun addCable(
@@ -995,11 +1654,7 @@ object EngineeringCatalogRepository {
             return false
         }
 
-        if (
-            cableRecords.any {
-                it.id == record.id
-            }
-        ) {
+        if (cableRecords.any { it.id == record.id }) {
             return false
         }
 
@@ -1018,11 +1673,7 @@ object EngineeringCatalogRepository {
             return false
         }
 
-        if (
-            breakerRecords.any {
-                it.id == record.id
-            }
-        ) {
+        if (breakerRecords.any { it.id == record.id }) {
             return false
         }
 
@@ -1041,11 +1692,7 @@ object EngineeringCatalogRepository {
             return false
         }
 
-        if (
-            transformerRecords.any {
-                it.id == record.id
-            }
-        ) {
+        if (transformerRecords.any { it.id == record.id }) {
             return false
         }
 
@@ -1064,11 +1711,7 @@ object EngineeringCatalogRepository {
             return false
         }
 
-        if (
-            generatorRecords.any {
-                it.id == record.id
-            }
-        ) {
+        if (generatorRecords.any { it.id == record.id }) {
             return false
         }
 
@@ -1087,11 +1730,7 @@ object EngineeringCatalogRepository {
             return false
         }
 
-        if (
-            busbarRecords.any {
-                it.id == record.id
-            }
-        ) {
+        if (busbarRecords.any { it.id == record.id }) {
             return false
         }
 
@@ -1110,11 +1749,7 @@ object EngineeringCatalogRepository {
             return false
         }
 
-        if (
-            panelRecords.any {
-                it.id == record.id
-            }
-        ) {
+        if (panelRecords.any { it.id == record.id }) {
             return false
         }
 
@@ -1124,20 +1759,20 @@ object EngineeringCatalogRepository {
     }
 
     // ================================================================
-    // INTERNAL INSERTION
+    // INTERNAL ADD
     // ================================================================
 
-    private fun addTransformerInternal(
-        record: TransformerRecord
+    private fun addCableInternal(
+        record: CableRecord
     ) {
 
-        if (
-            validateTransformerRecord(record) &&
-            transformerRecords.none {
+        if (validateCableRecord(record)) {
+
+            cableRecords.removeAll {
                 it.id == record.id
             }
-        ) {
-            transformerRecords += record
+
+            cableRecords += record
         }
     }
 
@@ -1150,12 +1785,17 @@ object EngineeringCatalogRepository {
     ): Boolean {
 
         if (record.id.isBlank()) return false
+
         if (record.manufacturerId.isBlank()) return false
+
         if (record.catalogId.isBlank()) return false
+
         if (record.productFamily.isBlank()) return false
 
         if (record.cores <= 0) return false
+
         if (record.sizeMm2 <= 0.0) return false
+
         if (record.voltageRatingV <= 0) return false
 
         if (
@@ -1179,20 +1819,6 @@ object EngineeringCatalogRepository {
             return false
         }
 
-        if (
-            record.shortCircuitKA != null &&
-            record.shortCircuitKA <= 0.0
-        ) {
-            return false
-        }
-
-        if (
-            record.shortCircuitDurationS != null &&
-            record.shortCircuitDurationS <= 0.0
-        ) {
-            return false
-        }
-
         return true
     }
 
@@ -1201,14 +1827,21 @@ object EngineeringCatalogRepository {
     ): Boolean {
 
         if (record.id.isBlank()) return false
+
         if (record.manufacturerId.isBlank()) return false
+
         if (record.catalogId.isBlank()) return false
+
         if (record.productFamily.isBlank()) return false
 
         if (record.poles <= 0) return false
+
         if (record.ratedCurrentA <= 0.0) return false
+
         if (record.ratedVoltageV <= 0.0) return false
+
         if (record.frequencyHz <= 0.0) return false
+
         if (record.icuKA <= 0.0) return false
 
         if (
@@ -1226,18 +1859,35 @@ object EngineeringCatalogRepository {
     ): Boolean {
 
         if (record.id.isBlank()) return false
+
         if (record.manufacturerId.isBlank()) return false
+
         if (record.catalogId.isBlank()) return false
+
         if (record.productFamily.isBlank()) return false
 
         if (record.ratedPowerKVA <= 0.0) return false
+
         if (record.primaryVoltageV <= 0.0) return false
+
         if (record.secondaryVoltageV <= 0.0) return false
+
         if (record.frequencyHz <= 0.0) return false
 
         if (
             record.impedancePercent != null &&
             record.impedancePercent <= 0.0
+        ) {
+            return false
+        }
+
+        /*
+         * A VERIFIED transformer MUST have impedance.
+         */
+
+        if (
+            record.verified &&
+            record.impedancePercent == null
         ) {
             return false
         }
@@ -1250,12 +1900,17 @@ object EngineeringCatalogRepository {
     ): Boolean {
 
         if (record.id.isBlank()) return false
+
         if (record.manufacturerId.isBlank()) return false
+
         if (record.catalogId.isBlank()) return false
+
         if (record.productFamily.isBlank()) return false
 
         if (record.ratedPowerKVA <= 0.0) return false
+
         if (record.ratedVoltageV <= 0.0) return false
+
         if (record.frequencyHz <= 0.0) return false
 
         if (
@@ -1273,10 +1928,13 @@ object EngineeringCatalogRepository {
     ): Boolean {
 
         if (record.id.isBlank()) return false
+
         if (record.manufacturerId.isBlank()) return false
+
         if (record.catalogId.isBlank()) return false
 
         if (record.ratedCurrentA <= 0.0) return false
+
         if (record.ratedVoltageV <= 0.0) return false
 
         return true
@@ -1287,10 +1945,13 @@ object EngineeringCatalogRepository {
     ): Boolean {
 
         if (record.id.isBlank()) return false
+
         if (record.manufacturerId.isBlank()) return false
+
         if (record.catalogId.isBlank()) return false
 
         if (record.ratedCurrentA <= 0.0) return false
+
         if (record.ratedVoltageV <= 0.0) return false
 
         return true
@@ -1367,23 +2028,28 @@ object EngineeringCatalogRepository {
     }
 
     // ================================================================
-    // CLEAR MEMORY
+    // CLEAR
     // ================================================================
 
     fun clearMemoryCache() {
 
         cableRecords.clear()
+
         breakerRecords.clear()
+
         transformerRecords.clear()
+
         generatorRecords.clear()
+
         busbarRecords.clear()
+
         panelRecords.clear()
 
         initialized = false
     }
 
     // ================================================================
-    // DATABASE STATUS
+    // STATISTICS
     // ================================================================
 
     data class CatalogStatistics(
@@ -1393,7 +2059,6 @@ object EngineeringCatalogRepository {
         val generators: Int,
         val busbars: Int,
         val panels: Int,
-
         val verifiedCables: Int,
         val verifiedBreakers: Int,
         val verifiedTransformers: Int,
@@ -1427,158 +2092,56 @@ object EngineeringCatalogRepository {
                 panelRecords.size,
 
             verifiedCables =
-                cableRecords.count {
-                    it.verified
-                },
+                cableRecords.count { it.verified },
 
             verifiedBreakers =
-                breakerRecords.count {
-                    it.verified
-                },
+                breakerRecords.count { it.verified },
 
             verifiedTransformers =
-                transformerRecords.count {
-                    it.verified
-                },
+                transformerRecords.count { it.verified },
 
             verifiedGenerators =
-                generatorRecords.count {
-                    it.verified
-                },
+                generatorRecords.count { it.verified },
 
             verifiedBusbars =
-                busbarRecords.count {
-                    it.verified
-                },
+                busbarRecords.count { it.verified },
 
             verifiedPanels =
-                panelRecords.count {
-                    it.verified
-                }
+                panelRecords.count { it.verified }
         )
     }
 
     // ================================================================
-    // STANDARD DATABASE
+    // ENGINEERING REFERENCES
     // ================================================================
 
-    data class EngineeringStandard(
-        val id: String,
-        val title: String,
-        val edition: String,
-        val scope: String
-    )
+    object DesignReferences {
 
-    val engineeringStandards: List<EngineeringStandard> = listOf(
+        const val IEC_60364_5_52 =
+            "IEC 60364-5-52:2009+AMD1:2024"
 
-        EngineeringStandard(
-            id = "IEC_60364_5_52",
-            title = "Low-voltage electrical installations - Wiring systems",
-            edition = "IEC 60364-5-52:2009+AMD1:2024",
-            scope =
-                "Cable selection, installation methods, current carrying capacity and voltage drop"
-        ),
+        const val IEC_60947_2 =
+            "IEC 60947-2:2024"
 
-        EngineeringStandard(
-            id = "IEC_60947_2",
-            title = "Low-voltage switchgear and controlgear - Circuit-breakers",
-            edition = "IEC 60947-2:2024",
-            scope =
-                "LV circuit-breakers, ratings and short-circuit performance"
-        ),
+        const val IEC_60909_0 =
+            "IEC 60909-0:2026"
 
-        EngineeringStandard(
-            id = "IEC_60076",
-            title = "Power Transformers",
-            edition = "IEC 60076 series",
-            scope =
-                "Power transformer ratings, tests and performance"
-        ),
+        const val IEC_60076 =
+            "IEC 60076 series"
 
-        EngineeringStandard(
-            id = "IEC_60034",
-            title = "Rotating Electrical Machines",
-            edition = "IEC 60034 series",
-            scope =
-                "Generator and rotating machine requirements"
-        ),
+        const val IEC_60034 =
+            "IEC 60034 series"
 
-        EngineeringStandard(
-            id = "EGYPTIAN_ELECTRICAL_CODE",
-            title = "Egyptian Code for Electrical Installations",
-            edition = "Egyptian Electrical Code",
-            scope =
-                "Egyptian installation requirements and design practice"
-        )
-    )
+        const val EGYPTIAN_ELECTRICAL_CODE =
+            "Egyptian Electrical Installation Code"
 
-    // ================================================================
-    // STANDARDIZED ENGINEERING VALUES
-    // ================================================================
+        const val EGYPTIAN_CODE_D17 =
+            "D17 - Egyptian Electrical Installation Code"
 
-    /**
-     * These are engineering reference values / limits used as
-     * defaults only where the user has not provided project-specific
-     * requirements.
-     *
-     * They are NOT manufacturer catalogue data.
-     */
-    object DesignReference {
+        const val EGYPTIAN_CODE_D18 =
+            "D18 - Egyptian Electrical Installation Code"
 
-        const val STANDARD_FREQUENCY_HZ = 50.0
-
-        const val STANDARD_LV_VOLTAGE_3PH_V = 400.0
-
-        const val STANDARD_LV_PHASE_VOLTAGE_V = 230.0
-
-        const val DEFAULT_POWER_FACTOR = 0.90
-
-        /**
-         * Default design margin is deliberately zero.
-         *
-         * The engineer must explicitly choose the margin.
-         */
-        const val DEFAULT_DESIGN_MARGIN_PERCENT = 0.0
-
-        /**
-         * Typical design target only.
-         *
-         * It is NOT automatically a replacement for the applicable
-         * project/code requirement.
-         */
-        const val DEFAULT_TARGET_POWER_FACTOR = 0.95
-
-        /**
-         * The voltage-drop requirement must be confirmed against
-         * the project and applicable Egyptian/IEC design requirements.
-         */
-        const val DEFAULT_MAX_VOLTAGE_DROP_PERCENT = 3.0
-
-        /**
-         * LV system nominal voltage.
-         */
-        const val LV_MAX_AC_VOLTAGE = 1000.0
-
-        /**
-         * LV circuit-breaker reference limit according to
-         * IEC 60947-2 scope.
-         */
-        const val IEC_LV_BREAKER_MAX_AC_VOLTAGE = 1000.0
-
-        /**
-         * Common LV system frequency in Egypt.
-         */
-        const val EGYPT_STANDARD_FREQUENCY_HZ = 50.0
-    }
-
-    // ================================================================
-    // INITIALIZATION GUARD
-    // ================================================================
-
-    private fun ensureInitialized() {
-
-        if (!initialized) {
-            initialize()
-        }
+        const val EGYPTIAN_CODE_D19 =
+            "D19 - Egyptian Electrical Installation Code"
     }
 }
