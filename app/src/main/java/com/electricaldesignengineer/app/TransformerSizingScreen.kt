@@ -63,6 +63,7 @@ Column(
         .padding(16.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp)
 ) {
+
     Text(
         text = "Transformer Sizing",
         style = MaterialTheme.typography.headlineSmall
@@ -119,52 +120,149 @@ Column(
 
     Button(
         onClick = {
+
             val kw = demandKW.toDoubleOrNull()
-
-            val pf = powerFactor
-                .toDoubleOrNull()
-                ?.takeIf { it > 0.0 && it <= 1.0 }
-
-            val marginPercent = margin
-                .toDoubleOrNull()
-                ?.takeIf { it >= 0.0 }
+            val pf = powerFactor.toDoubleOrNull()
+            val marginPercent = margin.toDoubleOrNull()
 
             if (kw == null || kw <= 0.0) {
-                result = "DATA_REQUIRED: Enter a valid demand load in kW."
+                result =
+                    "DATA_REQUIRED: Enter a valid demand load greater than zero."
                 return@Button
             }
 
-            if (pf == null) {
-                result = "DATA_REQUIRED: Enter a valid power factor between 0 and 1."
+            if (pf == null || pf !in 0.01..1.0) {
+                result =
+                    "DATA_REQUIRED: Power factor must be between 0.01 and 1.00."
                 return@Button
             }
 
-            if (marginPercent == null) {
-                result = "DATA_REQUIRED: Enter a valid design margin."
+            if (marginPercent == null || marginPercent < 0.0) {
+                result =
+                    "DATA_REQUIRED: Design margin must be zero or greater."
                 return@Button
             }
 
-            ProjectManager.updateSystem(
-                powerFactor = pf
-            )
+            /*
+             * ============================================================
+             * STEP 1
+             * ============================================================
+             *
+             * Calculate transformer required capacity inside the
+             * ProfessionalEngineeringCore.
+             *
+             * No engineering formula is performed in the UI.
+             */
+            val requiredKVAResult =
+                ProfessionalEngineeringCore.requiredTransformerKVA(
+                    demandKW = kw,
+                    powerFactor = pf,
+                    designMarginPercent = marginPercent
+                )
 
+            if (requiredKVAResult.status != EngineeringStatus.PASS) {
+                result = buildString {
+                    appendLine("TRANSFORMER REQUIRED KVA")
+                    appendLine()
+                    appendLine("Status: ${requiredKVAResult.status}")
+                    appendLine()
+
+                    requiredKVAResult.checks.forEach { check ->
+                        appendLine(
+                            "${check.name}: ${check.message}"
+                        )
+                    }
+                }
+
+                return@Button
+            }
+
+            /*
+             * ============================================================
+             * STEP 2
+             * ============================================================
+             *
+             * Obtain verified transformer catalog data.
+             *
+             * The calculation core selects the transformer.
+             * The UI does not contain a hardcoded transformer rating list.
+             */
+            val transformerData =
+                EngineeringCatalogRepository
+                    .allTransformers()
+                    .filter { it.verified }
+                    .map { transformer ->
+
+                        ProfessionalEngineeringCore.TransformerData(
+                            id = transformer.id,
+                            manufacturerId = transformer.manufacturerId,
+                            manufacturerName = transformer.manufacturerName,
+                            catalogId = transformer.catalogId,
+                            catalogName = transformer.catalogName,
+                            catalogRevision = transformer.catalogRevision,
+                            productFamily = transformer.productFamily,
+                            partNumber = transformer.partNumber,
+                            ratedPowerKVA = transformer.ratedPowerKVA,
+                            primaryVoltageV = transformer.primaryVoltageV,
+                            secondaryVoltageV = transformer.secondaryVoltageV,
+                            frequencyHz = transformer.frequencyHz,
+                            vectorGroup = transformer.vectorGroup,
+                            impedancePercent = transformer.impedancePercent,
+                            noLoadLossKW = transformer.noLoadLossKW,
+                            loadLossKW = transformer.loadLossKW,
+                            coolingClass = transformer.coolingClass,
+                            standardCode = transformer.standardCode,
+                            sourceUrl = transformer.sourceUrl,
+                            verified = transformer.verified
+                        )
+                    }
+
+            /*
+             * ============================================================
+             * STEP 3
+             * ============================================================
+             *
+             * Select the smallest verified transformer satisfying the
+             * calculated requirement.
+             *
+             * The margin is already included in requiredKVAResult.
+             * Therefore designTransformer receives the calculated
+             * capacity and zero additional margin.
+             *
+             * This prevents applying the design margin twice.
+             */
             val transformerResult =
-                AutoDesignService.designTransformer(
-                    demandKVA = kw / pf,
-                    designMarginPercent = marginPercent,
-                    primaryVoltageV = null,
-                    secondaryVoltageV = project.voltageV,
-                    frequencyHz = project.frequencyHz
+                ProfessionalEngineeringCore.designTransformer(
+                    input =
+                        ProfessionalEngineeringCore.TransformerDesignInput(
+                            requiredKVA =
+                                requiredKVAResult.requiredKVAWithoutMargin,
+                            designMarginPercent = marginPercent,
+                            requiredPrimaryVoltageV = null,
+                            requiredSecondaryVoltageV =
+                                project.voltageV.takeIf { it > 0.0 },
+                            requiredFrequencyHz =
+                                project.frequencyHz.takeIf { it > 0.0 }
+                        ),
+                    transformers = transformerData
                 )
 
             val transformer =
                 transformerResult.selectedTransformer
 
-            if (transformer != null &&
-                transformerResult.status == EngineeringStatus.PASS
+            if (
+                transformerResult.status ==
+                EngineeringStatus.PASS &&
+                transformer != null
             ) {
+
+                ProjectManager.updateSystem(
+                    powerFactor = pf
+                )
+
                 ProjectManager.setTransformer(
-                    transformerKVA = transformer.ratedPowerKVA
+                    transformerKVA =
+                        transformer.ratedPowerKVA
                 )
 
                 transformer.impedancePercent?.let {
@@ -180,13 +278,16 @@ Column(
                     Power Factor:
                     %.3f
 
-                    Demand:
+                    Required kVA Without Margin:
                     %.2f kVA
 
                     Design Margin:
                     %.1f %%
 
-                    Required Transformer:
+                    Required Transformer Capacity:
+                    %.2f kVA
+
+                    Selected Transformer:
                     %.0f kVA
 
                     Selected Manufacturer:
@@ -213,18 +314,24 @@ Column(
                     Impedance:
                     %s
 
+                    Cooling Class:
+                    %s
+
                     Standard:
                     %s
 
                     Design Status:
                     %s
 
+                    ✓ Calculation performed by ProfessionalEngineeringCore
+                    ✓ Verified catalog data used
                     ✓ Transformer result saved to ProjectManager
                 """.trimIndent().format(
-                    kw,
-                    pf,
-                    kw / pf,
-                    marginPercent,
+                    requiredKVAResult.demandKW,
+                    requiredKVAResult.powerFactor,
+                    requiredKVAResult.requiredKVAWithoutMargin,
+                    requiredKVAResult.designMarginPercent,
+                    requiredKVAResult.requiredKVA,
                     transformer.ratedPowerKVA,
                     transformer.manufacturerName,
                     transformer.productFamily,
@@ -236,22 +343,41 @@ Column(
                     transformer.impedancePercent?.let {
                         "%.2f %%".format(it)
                     } ?: "N/A",
+                    transformer.coolingClass ?: "N/A",
                     transformer.standardCode ?: "N/A",
                     transformerResult.status
                 )
-            } else {
-                result = buildString {
-                    append("Transformer Design Result\n\n")
-                    append("Status: ${transformerResult.status}\n\n")
-                    append(transformerResult.message)
 
-                    if (transformerResult.warnings.isNotEmpty()) {
-                        append("\n\nWarnings:\n")
-                        transformerResult.warnings.forEach {
-                            append("• ")
-                            append(it)
-                            append('\n')
+            } else {
+
+                result = buildString {
+
+                    appendLine("TRANSFORMER DESIGN RESULT")
+                    appendLine()
+                    appendLine(
+                        "Status: ${transformerResult.status}"
+                    )
+                    appendLine()
+
+                    transformerResult.checks.forEach { check ->
+
+                        appendLine(
+                            "${check.name}: ${check.message}"
+                        )
+
+                        check.calculatedValue?.let {
+                            appendLine(
+                                "Calculated: %.3f ${check.unit}".format(it)
+                            )
                         }
+
+                        check.requiredValue?.let {
+                            appendLine(
+                                "Required: %.3f ${check.unit}".format(it)
+                            )
+                        }
+
+                        appendLine()
                     }
                 }
             }
@@ -262,6 +388,7 @@ Column(
     }
 
     if (result.isNotEmpty()) {
+
         HorizontalDivider()
 
         Text(
@@ -323,6 +450,4 @@ Column(
     ) {
         Text("Back")
     }
-}
-
 }
