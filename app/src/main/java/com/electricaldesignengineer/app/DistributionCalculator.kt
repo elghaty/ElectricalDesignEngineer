@@ -1,42 +1,66 @@
 package com.electricaldesignengineer.app
 
-import kotlin.math.sqrt
-
 /**
- * DistributionCalculator
+ * ================================================================
+ * DISTRIBUTION CALCULATOR
+ * ================================================================
  *
- * Orchestration layer for distribution-system calculations.
+ * Orchestration layer for the electrical distribution model.
  *
- * IMPORTANT:
- * - Engineering calculations remain centralized in ProfessionalEngineeringCore.
- * - Frequency is taken from DistributionSystem.frequency.
- * - Supported system frequencies are 50 Hz and 60 Hz.
- * - No independent engineering calculation engine is implemented here.
+ * Responsibilities:
+ * - Read DistributionSystem / DistributionNode data.
+ * - Pass load calculations to ProfessionalEngineeringCore.
+ * - Respect the selected 50 Hz / 60 Hz system frequency.
+ * - Provide distribution-level calculation results.
+ *
+ * Engineering formulas are NOT implemented here.
+ * ProfessionalEngineeringCore remains the authoritative
+ * engineering calculation engine.
+ *
+ * ================================================================
  */
 object DistributionCalculator {
 
+    // ================================================================
+    // COMPLETE SYSTEM CALCULATION
+    // ================================================================
+
     /**
-     * Calculates all nodes using the frequency stored in the distribution system.
+     * Calculate the complete distribution system using the
+     * frequency stored in DistributionSystem.
      */
     fun calculate(
         system: DistributionSystem
     ): List<NodeCalculation> {
-        return calculate(system, system.frequency)
+
+        return calculate(
+            system = system,
+            frequency = system.frequency
+        )
     }
 
     /**
-     * Calculates all nodes using an explicitly selected frequency.
+     * Calculate the complete distribution system using an
+     * explicitly selected frequency.
      */
     fun calculate(
         system: DistributionSystem,
         frequency: DistributionFrequency
     ): List<NodeCalculation> {
 
-        require(system.isValid()) {
-            "Invalid distribution system data."
+        val validation =
+            system.validate()
+
+        if (!validation.isValid) {
+            throw IllegalArgumentException(
+                validation.errors.joinToString(
+                    separator = "\n"
+                )
+            )
         }
 
         return system.nodes.map { node ->
+
             calculateNode(
                 node = node,
                 frequency = frequency
@@ -45,26 +69,31 @@ object DistributionCalculator {
     }
 
     /**
-     * Compatibility overload for callers that still provide frequency as Double.
+     * Compatibility overload for existing callers that pass
+     * frequency as a numeric value.
+     *
+     * Only 50 Hz and 60 Hz are accepted.
      */
     fun calculate(
         system: DistributionSystem,
         frequencyHz: Double
     ): List<NodeCalculation> {
 
-        val frequency = frequencyFromHz(frequencyHz)
-
         return calculate(
             system = system,
-            frequency = frequency
+            frequency = frequencyFromHz(frequencyHz)
         )
     }
 
+    // ================================================================
+    // NODE CALCULATION
+    // ================================================================
+
     /**
-     * Calculates one distribution node.
+     * Calculate one distribution node.
      *
-     * The actual engineering load calculation is delegated to
-     * ProfessionalEngineeringCore.
+     * DistributionLoad is converted into the canonical
+     * ProfessionalEngineeringCore.LoadInput model.
      */
     private fun calculateNode(
         node: DistributionNode,
@@ -72,28 +101,76 @@ object DistributionCalculator {
     ): NodeCalculation {
 
         val phaseSystem =
-            if (node.isThreePhase) {
-                ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
-            } else {
-                ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
+            when (node.phaseType) {
+
+                PhaseType.THREE_PHASE ->
+                    ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
+
+                PhaseType.SINGLE_PHASE_L1,
+                PhaseType.SINGLE_PHASE_L2,
+                PhaseType.SINGLE_PHASE_L3 ->
+                    ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
             }
 
+        /*
+         * Node voltage is the authoritative voltage for this
+         * distribution node.
+         */
         val systemInput =
             ProfessionalEngineeringCore.SystemInput(
-                voltageV = node.voltageV,
-                frequencyHz = frequency.valueHz,
-                phaseSystem = phaseSystem,
-                powerFactor = node.powerFactor
+
+                voltageV =
+                    node.voltage,
+
+                frequencyHz =
+                    frequency.valueHz,
+
+                phaseSystem =
+                    phaseSystem,
+
+                /*
+                 * The core requires a system power factor.
+                 *
+                 * For a node with loads, use the first valid load PF
+                 * as the initial system input. The individual load
+                 * PFs are still passed independently to the core.
+                 *
+                 * If there are no loads, use 1.0 so the core receives
+                 * a valid neutral value.
+                 */
+                powerFactor =
+                    node.loads
+                        .firstOrNull {
+                            it.powerFactor > 0.0
+                        }
+                        ?.powerFactor
+                        ?.coerceIn(0.01, 1.0)
+                        ?: 1.0
             )
 
+        /*
+         * Convert distribution loads to the canonical engineering
+         * load model.
+         */
         val loads =
             node.loads.map { load ->
+
                 ProfessionalEngineeringCore.LoadInput(
-                    name = load.name,
-                    quantity = load.quantity,
-                    unitPowerKW = load.unitPowerKW,
-                    demandFactor = load.demandFactor,
-                    powerFactor = load.powerFactor
+
+                    name =
+                        load.name,
+
+                    quantity =
+                        load.quantity.toDouble(),
+
+                    unitPowerKW =
+                        load.unitKW,
+
+                    demandFactor =
+                        load.demandFactor,
+
+                    powerFactor =
+                        load.powerFactor
                 )
             }
 
@@ -104,24 +181,47 @@ object DistributionCalculator {
             )
 
         return NodeCalculation(
-            nodeId = node.id,
-            nodeName = node.name,
-            frequencyHz = frequency.valueHz,
-            connectedKW = result.connectedKW,
-            demandKW = result.demandKW,
-            demandKVA = result.demandKVA,
-            currentA = result.currentA,
-            powerFactor = result.effectivePowerFactor,
-            checks = result.checks
+
+            nodeId =
+                node.id,
+
+            nodeName =
+                node.name,
+
+            frequencyHz =
+                frequency.valueHz,
+
+            connectedKW =
+                result.connectedKW,
+
+            demandKW =
+                result.demandKW,
+
+            demandKVA =
+                result.demandKVA,
+
+            currentA =
+                result.currentA,
+
+            powerFactor =
+                result.effectivePowerFactor,
+
+            checks =
+                result.checks
         )
     }
 
+    // ================================================================
+    // TRANSFORMER LOADING
+    // ================================================================
+
     /**
-     * Returns transformer loading percentage based on the selected
-     * transformer catalog rating.
+     * Calculate transformer loading percentage using the
+     * distribution system frequency.
      *
-     * This function is intentionally kept as an orchestration/helper
-     * function and does not implement a separate engineering engine.
+     * Returns null when:
+     * - there is no demand,
+     * - or no verified matching transformer exists.
      */
     fun transformerLoading(
         system: DistributionSystem
@@ -134,10 +234,8 @@ object DistributionCalculator {
     }
 
     /**
-     * Transformer loading using an explicit frequency.
-     *
-     * Only verified catalog transformers matching the requested
-     * voltage/frequency are considered.
+     * Calculate transformer loading percentage for a selected
+     * system frequency.
      */
     fun transformerLoading(
         system: DistributionSystem,
@@ -151,25 +249,34 @@ object DistributionCalculator {
             )
 
         val totalDemandKVA =
-            calculations.sumOf { it.demandKVA }
+            calculations.sumOf {
+                it.demandKVA
+            }
 
         if (totalDemandKVA <= 0.0) {
             return null
         }
 
+        /*
+         * The current repository intentionally contains no verified
+         * transformer records until manufacturer impedance data is
+         * available.
+         *
+         * Therefore this may legitimately return null.
+         */
         val transformer =
             EngineeringCatalogRepository
                 .searchTransformers(
                     minimumKVA = totalDemandKVA
                 )
                 .firstOrNull {
+
                     it.verified &&
-                        it.frequencyHz == frequency.valueHz &&
-                        approximatelyEqual(
-                            it.primaryVoltageV,
-                            system.nodes.firstOrNull()?.voltageV
-                                ?: it.primaryVoltageV
-                        )
+
+                    approximatelyEqual(
+                        it.frequencyHz,
+                        frequency.valueHz
+                    )
                 }
                 ?: return null
 
@@ -177,13 +284,14 @@ object DistributionCalculator {
             return null
         }
 
-        return totalDemandKVA /
-            transformer.ratedPowerKVA *
-            100.0
+        return (
+            totalDemandKVA /
+                transformer.ratedPowerKVA
+            ) * 100.0
     }
 
     /**
-     * Compatibility overload for callers using Double frequency.
+     * Compatibility overload for numeric frequency.
      */
     fun transformerLoading(
         system: DistributionSystem,
@@ -196,13 +304,19 @@ object DistributionCalculator {
         )
     }
 
+    // ================================================================
+    // RECOMMENDED TRANSFORMER
+    // ================================================================
+
     /**
-     * Finds the smallest verified transformer capable of supplying
-     * the calculated distribution demand.
+     * Return the smallest verified transformer capable of supplying
+     * the calculated demand at the system frequency.
+     *
+     * No transformer is invented when verified catalog data is absent.
      */
     fun findRecommendedTransformer(
         system: DistributionSystem
-    ): TransformerRecord? {
+    ): EngineeringCatalogRepository.TransformerRecord? {
 
         val calculations =
             calculate(
@@ -211,7 +325,9 @@ object DistributionCalculator {
             )
 
         val demandKVA =
-            calculations.sumOf { it.demandKVA }
+            calculations.sumOf {
+                it.demandKVA
+            }
 
         if (demandKVA <= 0.0) {
             return null
@@ -222,72 +338,95 @@ object DistributionCalculator {
                 minimumKVA = demandKVA
             )
             .filter {
+
                 it.verified &&
-                    it.frequencyHz == system.frequency.valueHz
+
+                approximatelyEqual(
+                    it.frequencyHz,
+                    system.frequency.valueHz
+                )
             }
             .minByOrNull {
                 it.ratedPowerKVA
             }
     }
 
+    // ================================================================
+    // FREQUENCY
+    // ================================================================
+
     /**
-     * Converts a numeric frequency to the canonical distribution
-     * frequency enum.
+     * Convert numeric frequency to the canonical distribution
+     * frequency type.
      */
     private fun frequencyFromHz(
         frequencyHz: Double
     ): DistributionFrequency {
 
         return when {
-            approximatelyEqual(frequencyHz, 50.0) ->
+
+            approximatelyEqual(
+                frequencyHz,
+                50.0
+            ) ->
                 DistributionFrequency.HZ_50
 
-            approximatelyEqual(frequencyHz, 60.0) ->
+            approximatelyEqual(
+                frequencyHz,
+                60.0
+            ) ->
                 DistributionFrequency.HZ_60
 
             else ->
                 throw IllegalArgumentException(
-                    "Only 50 Hz and 60 Hz are supported."
+                    "Unsupported distribution frequency: " +
+                        "$frequencyHz Hz. " +
+                        "Only 50 Hz and 60 Hz are supported."
                 )
         }
     }
 
     /**
-     * Small tolerance for floating-point frequency comparisons.
+     * Floating-point comparison helper.
      */
     private fun approximatelyEqual(
         a: Double,
         b: Double,
         tolerance: Double = 0.001
     ): Boolean {
+
         return kotlin.math.abs(a - b) <= tolerance
     }
 }
 
+// ================================================================
+// NODE CALCULATION RESULT
+// ================================================================
+
 /**
- * Result of calculating one distribution node.
+ * Engineering result for one distribution node.
  */
 data class NodeCalculation(
+
     val nodeId: String,
+
     val nodeName: String,
+
     val frequencyHz: Double,
+
     val connectedKW: Double,
+
     val demandKW: Double,
+
     val demandKVA: Double,
+
     val currentA: Double,
+
     val powerFactor: Double,
+
     val checks: List<EngineeringCheck>
 )
 
-مهم: الملف يفترض أن "DistributionModel.kt" الحالي يحتوي بالفعل على:
+هذه المرة الملف متوافق مع الـ "EngineeringCatalogRepository" الذي أرسلته: لا يوجد "TransformerRecord" مستقل، ولا "isThreePhase"، ولا "voltageV"، ولا "unitPowerKW"، ولا "isValid()". كما أن اختيار 50/60 Hz يعتمد على "DistributionFrequency" الموجودة فعليًا في "DistributionModel.kt".
 
-enum class DistributionFrequency
-
-وأن "DistributionNode" يحتوي على:
-
-isThreePhase
-voltageV
-powerFactor
-loads
-
-بعد الاستبدال اعمل Commit فقط، وسيبدأ GitHub Actions Build تلقائيًا.
+استبدله → Commit → Build.
