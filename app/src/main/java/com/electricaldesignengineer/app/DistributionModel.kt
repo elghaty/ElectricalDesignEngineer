@@ -21,14 +21,12 @@ import java.util.UUID
  *     ↓
  * LOAD
  *
- * This model is used by:
- * - Design Engine
- * - SLD Generator
- * - Load Schedule
- * - Cable Sizing
- * - Breaker Selection
- * - Short Circuit
- * - Reports
+ * The electrical system voltage and operating frequency
+ * are independent properties.
+ *
+ * Supported frequencies:
+ * - 50 Hz
+ * - 60 Hz
  */
 
 enum class DistributionNodeType {
@@ -60,6 +58,27 @@ enum class NodeStatus {
     CALCULATED,
     WARNING,
     ERROR
+}
+
+/**
+ * Supported electrical system frequency.
+ *
+ * 50 Hz is the default for compatibility with the current
+ * Egyptian-market catalog data.
+ */
+enum class DistributionFrequency(
+    val valueHz: Double,
+    val displayName: String
+) {
+    HZ_50(
+        valueHz = 50.0,
+        displayName = "50 Hz"
+    ),
+
+    HZ_60(
+        valueHz = 60.0,
+        displayName = "60 Hz"
+    )
 }
 
 /**
@@ -125,7 +144,8 @@ data class DistributionLoad(
 ) {
 
     fun connectedKW(): Double {
-        return quantity.coerceAtLeast(0) * unitKW.coerceAtLeast(0.0)
+        return quantity.coerceAtLeast(0) *
+                unitKW.coerceAtLeast(0.0)
     }
 
     fun demandKW(): Double {
@@ -134,7 +154,12 @@ data class DistributionLoad(
     }
 
     fun demandKVA(): Double {
-        val pf = powerFactor.coerceIn(0.1, 1.0)
+        val pf =
+            powerFactor.coerceIn(
+                0.1,
+                1.0
+            )
+
         return demandKW() / pf
     }
 }
@@ -237,14 +262,16 @@ data class DistributionNode(
     /**
      * Connected load directly assigned to this node.
      */
-    var loads: MutableList<DistributionLoad> = mutableListOf(),
+    var loads: MutableList<DistributionLoad> =
+        mutableListOf(),
 
     /**
      * Feeder connecting this node to its parent.
      */
     var feeder: FeederDesign? = null,
 
-    var status: NodeStatus = NodeStatus.NOT_CALCULATED,
+    var status: NodeStatus =
+        NodeStatus.NOT_CALCULATED,
 
     var notes: String = ""
 ) {
@@ -275,29 +302,68 @@ data class DistributionNode(
 
 /**
  * Complete distribution system.
+ *
+ * Frequency is stored at system level because all nodes
+ * belong to the same electrical system.
  */
 data class DistributionSystem(
 
     val id: String = UUID.randomUUID().toString(),
 
-    var name: String = "Electrical Distribution System",
+    var name: String =
+        "Electrical Distribution System",
 
     var projectName: String = "",
 
-    var nodes: MutableList<DistributionNode> = mutableListOf()
+    /**
+     * Electrical system frequency.
+     *
+     * Supported:
+     * - 50 Hz
+     * - 60 Hz
+     */
+    var frequency: DistributionFrequency =
+        DistributionFrequency.HZ_50,
+
+    var nodes: MutableList<DistributionNode> =
+        mutableListOf()
 ) {
+
+    /**
+     * Frequency in Hz for engineering calculations.
+     */
+    fun frequencyHz(): Double {
+        return frequency.valueHz
+    }
+
+    /**
+     * Change system frequency.
+     */
+    fun setFrequency(
+        newFrequency: DistributionFrequency
+    ) {
+        frequency = newFrequency
+    }
 
     /**
      * Add node to system.
      */
-    fun addNode(node: DistributionNode): Boolean {
+    fun addNode(
+        node: DistributionNode
+    ): Boolean {
 
-        if (nodes.any { it.id == node.id }) {
+        if (nodes.any {
+                it.id == node.id
+            }
+        ) {
             return false
         }
 
-        if (node.parentId != null &&
-            nodes.none { it.id == node.parentId }
+        if (
+            node.parentId != null &&
+            nodes.none {
+                it.id == node.parentId
+            }
         ) {
             return false
         }
@@ -311,20 +377,31 @@ data class DistributionSystem(
     /**
      * Remove node and all descendants.
      */
-    fun removeNode(nodeId: String): Boolean {
+    fun removeNode(
+        nodeId: String
+    ): Boolean {
 
-        if (nodes.none { it.id == nodeId }) {
+        if (
+            nodes.none {
+                it.id == nodeId
+            }
+        ) {
             return false
         }
 
-        val idsToRemove = mutableSetOf<String>()
+        val idsToRemove =
+            mutableSetOf<String>()
 
-        fun collect(id: String) {
+        fun collect(
+            id: String
+        ) {
 
             idsToRemove.add(id)
 
             nodes
-                .filter { it.parentId == id }
+                .filter {
+                    it.parentId == id
+                }
                 .forEach {
                     collect(it.id)
                 }
@@ -343,7 +420,10 @@ data class DistributionSystem(
     /**
      * Get node by ID.
      */
-    fun getNode(nodeId: String): DistributionNode? {
+    fun getNode(
+        nodeId: String
+    ): DistributionNode? {
+
         return nodes.firstOrNull {
             it.id == nodeId
         }
@@ -353,7 +433,9 @@ data class DistributionSystem(
     /**
      * Get direct children.
      */
-    fun getChildren(nodeId: String): List<DistributionNode> {
+    fun getChildren(
+        nodeId: String
+    ): List<DistributionNode> {
 
         return nodes.filter {
             it.parentId == nodeId
@@ -364,9 +446,13 @@ data class DistributionSystem(
     /**
      * Get parent.
      */
-    fun getParent(nodeId: String): DistributionNode? {
+    fun getParent(
+        nodeId: String
+    ): DistributionNode? {
 
-        val node = getNode(nodeId) ?: return null
+        val node =
+            getNode(nodeId)
+                ?: return null
 
         return node.parentId?.let {
             getNode(it)
@@ -380,7 +466,10 @@ data class DistributionSystem(
     fun getTransformer(): DistributionNode? {
 
         return nodes.firstOrNull {
-            it.type == DistributionNodeType.TRANSFORMER &&
+
+            it.type ==
+                    DistributionNodeType.TRANSFORMER &&
+
                     it.parentId == null
         }
     }
@@ -389,13 +478,19 @@ data class DistributionSystem(
     /**
      * Get complete descendants.
      */
-    fun getDescendants(nodeId: String): List<DistributionNode> {
+    fun getDescendants(
+        nodeId: String
+    ): List<DistributionNode> {
 
-        val result = mutableListOf<DistributionNode>()
+        val result =
+            mutableListOf<DistributionNode>()
 
-        fun collect(id: String) {
+        fun collect(
+            id: String
+        ) {
 
-            val children = getChildren(id)
+            val children =
+                getChildren(id)
 
             children.forEach { child ->
 
@@ -418,7 +513,10 @@ data class DistributionSystem(
 
         return nodes
             .filter {
-                it.type == DistributionNodeType.LOAD ||
+
+                it.type ==
+                        DistributionNodeType.LOAD ||
+
                         it.loads.isNotEmpty()
             }
             .sumOf {
@@ -462,15 +560,36 @@ data class DistributionSystem(
      */
     fun validate(): DistributionValidationResult {
 
-        val errors = mutableListOf<String>()
-        val warnings = mutableListOf<String>()
+        val errors =
+            mutableListOf<String>()
+
+        val warnings =
+            mutableListOf<String>()
+
+
+        /*
+         * Frequency check
+         */
+        if (
+            frequency != DistributionFrequency.HZ_50 &&
+            frequency != DistributionFrequency.HZ_60
+        ) {
+
+            errors.add(
+                "Unsupported system frequency."
+            )
+        }
+
 
         /*
          * Transformer check
          */
-        val transformers = nodes.filter {
-            it.type == DistributionNodeType.TRANSFORMER
-        }
+        val transformers =
+            nodes.filter {
+
+                it.type ==
+                        DistributionNodeType.TRANSFORMER
+            }
 
         if (transformers.isEmpty()) {
 
@@ -489,9 +608,10 @@ data class DistributionSystem(
         /*
          * Root check
          */
-        val roots = nodes.filter {
-            it.parentId == null
-        }
+        val roots =
+            nodes.filter {
+                it.parentId == null
+            }
 
         if (roots.size > 1) {
 
@@ -506,8 +626,11 @@ data class DistributionSystem(
          */
         nodes.forEach { node ->
 
-            if (node.parentId != null &&
-                nodes.none { it.id == node.parentId }
+            if (
+                node.parentId != null &&
+                nodes.none {
+                    it.id == node.parentId
+                }
             ) {
 
                 errors.add(
@@ -522,24 +645,32 @@ data class DistributionSystem(
          */
         nodes.forEach { node ->
 
-            val visited = mutableSetOf<String>()
+            val visited =
+                mutableSetOf<String>()
 
-            var current: DistributionNode? = node
+            var current:
+                    DistributionNode? = node
 
             while (current != null) {
 
-                if (!visited.add(current.id)) {
+                if (
+                    !visited.add(
+                        current.id
+                    )
+                ) {
 
                     errors.add(
-                        "Circular hierarchy detected at '${node.name}'."
+                        "Circular hierarchy detected at " +
+                                "'${node.name}'."
                     )
 
                     break
                 }
 
-                current = current.parentId?.let {
-                    getNode(it)
-                }
+                current =
+                    current.parentId?.let {
+                        getNode(it)
+                    }
             }
         }
 
@@ -549,11 +680,13 @@ data class DistributionSystem(
          */
         nodes.forEach { node ->
 
-            val parent = getParent(node.id)
+            val parent =
+                getParent(node.id)
 
             if (parent != null) {
 
-                if (!isValidParentChild(
+                if (
+                    !isValidParentChild(
                         parent.type,
                         node.type
                     )
@@ -569,9 +702,15 @@ data class DistributionSystem(
 
 
         return DistributionValidationResult(
-            isValid = errors.isEmpty(),
-            errors = errors,
-            warnings = warnings
+
+            isValid =
+                errors.isEmpty(),
+
+            errors =
+                errors,
+
+            warnings =
+                warnings
         )
     }
 
@@ -587,37 +726,64 @@ data class DistributionSystem(
         return when (parent) {
 
             DistributionNodeType.TRANSFORMER -> {
-                child == DistributionNodeType.MDB
+
+                child ==
+                        DistributionNodeType.MDB
             }
 
             DistributionNodeType.MDB -> {
-                child == DistributionNodeType.SMDB ||
-                        child == DistributionNodeType.DB ||
-                        child == DistributionNodeType.FINAL_CIRCUIT
+
+                child ==
+                        DistributionNodeType.SMDB ||
+
+                        child ==
+                        DistributionNodeType.DB ||
+
+                        child ==
+                        DistributionNodeType.FINAL_CIRCUIT
             }
 
             DistributionNodeType.SMDB -> {
-                child == DistributionNodeType.DB ||
-                        child == DistributionNodeType.SUB_DB ||
-                        child == DistributionNodeType.FINAL_CIRCUIT
+
+                child ==
+                        DistributionNodeType.DB ||
+
+                        child ==
+                        DistributionNodeType.SUB_DB ||
+
+                        child ==
+                        DistributionNodeType.FINAL_CIRCUIT
             }
 
             DistributionNodeType.DB -> {
-                child == DistributionNodeType.SUB_DB ||
-                        child == DistributionNodeType.FINAL_CIRCUIT ||
-                        child == DistributionNodeType.LOAD
+
+                child ==
+                        DistributionNodeType.SUB_DB ||
+
+                        child ==
+                        DistributionNodeType.FINAL_CIRCUIT ||
+
+                        child ==
+                        DistributionNodeType.LOAD
             }
 
             DistributionNodeType.SUB_DB -> {
-                child == DistributionNodeType.FINAL_CIRCUIT ||
-                        child == DistributionNodeType.LOAD
+
+                child ==
+                        DistributionNodeType.FINAL_CIRCUIT ||
+
+                        child ==
+                        DistributionNodeType.LOAD
             }
 
             DistributionNodeType.FINAL_CIRCUIT -> {
-                child == DistributionNodeType.LOAD
+
+                child ==
+                        DistributionNodeType.LOAD
             }
 
             DistributionNodeType.LOAD -> {
+
                 false
             }
         }
@@ -629,17 +795,22 @@ data class DistributionSystem(
      *
      * Useful for SLD generation.
      */
-    fun hierarchyOrder(): List<DistributionNode> {
+    fun hierarchyOrder():
+            List<DistributionNode> {
 
-        val result = mutableListOf<DistributionNode>()
+        val result =
+            mutableListOf<DistributionNode>()
 
-        val root = getTransformer()
+        val root =
+            getTransformer()
 
         if (root == null) {
             return emptyList()
         }
 
-        fun visit(node: DistributionNode) {
+        fun visit(
+            node: DistributionNode
+        ) {
 
             result.add(node)
 
@@ -663,9 +834,11 @@ data class DistributionValidationResult(
 
     val isValid: Boolean,
 
-    val errors: List<String> = emptyList(),
+    val errors: List<String> =
+        emptyList(),
 
-    val warnings: List<String> = emptyList()
+    val warnings: List<String> =
+        emptyList()
 )
 
 
@@ -682,14 +855,14 @@ data class SldConnection(
 
 /**
  * SLD model.
- *
- * The UI can later render this automatically.
  */
 data class SldModel(
 
-    val nodes: List<DistributionNode>,
+    val nodes:
+        List<DistributionNode>,
 
-    val connections: List<SldConnection>
+    val connections:
+        List<SldConnection>
 )
 
 
@@ -709,18 +882,26 @@ object SldGenerator {
             orderedNodes
                 .mapNotNull { node ->
 
-                    node.parentId?.let { parentId ->
+                    node.parentId?.let {
+                        parentId ->
 
                         SldConnection(
-                            fromNodeId = parentId,
-                            toNodeId = node.id
+                            fromNodeId =
+                                parentId,
+
+                            toNodeId =
+                                node.id
                         )
                     }
                 }
 
         return SldModel(
-            nodes = orderedNodes,
-            connections = connections
+
+            nodes =
+                orderedNodes,
+
+            connections =
+                connections
         )
     }
 }
@@ -833,7 +1014,8 @@ object DistributionNodeFactory {
     fun finalCircuit(
         name: String,
         parentId: String,
-        phase: PhaseType = PhaseType.THREE_PHASE
+        phase: PhaseType =
+            PhaseType.THREE_PHASE
     ): DistributionNode {
 
         return DistributionNode(
@@ -848,7 +1030,10 @@ object DistributionNodeFactory {
             phaseType = phase,
 
             voltage =
-                if (phase == PhaseType.THREE_PHASE)
+                if (
+                    phase ==
+                    PhaseType.THREE_PHASE
+                )
                     400.0
                 else
                     230.0
@@ -863,26 +1048,31 @@ object DistributionNodeFactory {
         quantity: Int = 1,
         pf: Double = 0.9,
         df: Double = 1.0,
-        phase: PhaseType = PhaseType.THREE_PHASE
+        phase: PhaseType =
+            PhaseType.THREE_PHASE
     ): DistributionNode {
 
-        val node = DistributionNode(
+        val node =
+            DistributionNode(
 
-            name = name,
+                name = name,
 
-            type =
-                DistributionNodeType.LOAD,
+                type =
+                    DistributionNodeType.LOAD,
 
-            parentId = parentId,
+                parentId = parentId,
 
-            phaseType = phase,
+                phaseType = phase,
 
-            voltage =
-                if (phase == PhaseType.THREE_PHASE)
-                    400.0
-                else
-                    230.0
-        )
+                voltage =
+                    if (
+                        phase ==
+                        PhaseType.THREE_PHASE
+                    )
+                        400.0
+                    else
+                        230.0
+            )
 
         node.loads.add(
 
@@ -928,72 +1118,118 @@ object DistributionNodeFactory {
  */
 object DistributionExample {
 
-    fun create(): DistributionSystem {
+    fun create(
+        frequency:
+        DistributionFrequency =
+            DistributionFrequency.HZ_50
+    ): DistributionSystem {
 
         val system =
             DistributionSystem(
-                name = "Main Electrical Distribution"
+
+                name =
+                    "Main Electrical Distribution",
+
+                frequency =
+                    frequency
             )
 
 
         val transformer =
             DistributionNodeFactory.transformer(
+
                 name = "TR-01",
+
                 kva = 1000.0
             )
 
-        system.addNode(transformer)
+        system.addNode(
+            transformer
+        )
 
 
         val mdb =
             DistributionNodeFactory.mdb(
+
                 name = "MDB-01",
-                parentId = transformer.id
+
+                parentId =
+                    transformer.id
             )
 
-        system.addNode(mdb)
+        system.addNode(
+            mdb
+        )
 
 
         val smdb =
             DistributionNodeFactory.smdb(
+
                 name = "SMDB-01",
-                parentId = mdb.id
+
+                parentId =
+                    mdb.id
             )
 
-        system.addNode(smdb)
+        system.addNode(
+            smdb
+        )
 
 
         val db =
             DistributionNodeFactory.db(
+
                 name = "DB-01",
-                parentId = smdb.id
+
+                parentId =
+                    smdb.id
             )
 
-        system.addNode(db)
+        system.addNode(
+            db
+        )
 
 
         val finalCircuit =
             DistributionNodeFactory.finalCircuit(
+
                 name = "FC-01",
-                parentId = db.id,
-                phase = PhaseType.THREE_PHASE
+
+                parentId =
+                    db.id,
+
+                phase =
+                    PhaseType.THREE_PHASE
             )
 
-        system.addNode(finalCircuit)
+        system.addNode(
+            finalCircuit
+        )
 
 
         val load =
             DistributionNodeFactory.load(
+
                 name = "AHU-01",
-                parentId = finalCircuit.id,
+
+                parentId =
+                    finalCircuit.id,
+
                 kw = 22.0,
+
                 quantity = 1,
+
                 pf = 0.9,
+
                 df = 1.0,
-                phase = PhaseType.THREE_PHASE
+
+                phase =
+                    PhaseType.THREE_PHASE
             )
 
-        system.addNode(load)
+        system.addNode(
+            load
+        )
 
 
         return system
