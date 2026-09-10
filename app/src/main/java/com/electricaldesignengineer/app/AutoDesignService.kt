@@ -252,10 +252,10 @@ object AutoDesignService {
             // 1. Validate system
             // ----------------------------------------------------
 
-            val validationErrors =
+            val validationResult =
                 system.validate()
 
-            if (validationErrors.isNotEmpty()) {
+            if (!validationResult.isValid) {
 
                 return SystemResult(
                     system = system,
@@ -263,9 +263,14 @@ object AutoDesignService {
                     valid = false,
                     message =
                         "DATA_REQUIRED: distribution system validation failed.",
-                    warnings = validationErrors
+                    warnings =
+                        validationResult.errors +
+                                validationResult.warnings
                 )
             }
+
+            systemWarnings +=
+                validationResult.warnings
 
             // ----------------------------------------------------
             // 2. Calculate total demand
@@ -499,7 +504,7 @@ object AutoDesignService {
 
         val impedancePercent =
             transformer.impedancePercent
-                .takeIf { it > 0.0 }
+                ?.takeIf { it > 0.0 }
                 ?: return null
 
         if (voltageV <= 0.0) {
