@@ -32,32 +32,19 @@ package com.electricaldesignengineer.app
  * Protection checks
  *
  * IMPORTANT:
+ * - ProfessionalEngineeringCore is the SINGLE calculation core.
  * - No EngineeringDesignEngine.
+ * - No duplicate demand calculation.
  * - No invented transformer impedance.
  * - No invented short-circuit current.
- * - No forced 400 V system voltage.
- * - No forced 50 Hz design frequency.
+ * - No forced 400 V.
+ * - No forced 50 Hz.
  * - Cable is automatically selected by ProfessionalEngineeringCore.
  * - Breaker is automatically selected by ProfessionalEngineeringCore.
- * - Transformer is automatically selected from the verified catalog.
- * - Engineer can override the automatically selected cable later from the UI.
+ * - Transformer is automatically selected from verified catalog data.
  *
- * Engineering scope:
- * - Automatic preliminary feeder design.
- * - Demand/current calculation.
- * - Verified transformer selection.
- * - Transformer secondary bus short-circuit calculation.
- * - Automatic cable selection.
- * - Automatic breaker selection.
- * - Basic Ib <= In <= Iz coordination.
- * - Basic Icu/Ics verification.
- *
- * This service does NOT claim to replace:
- * - Full IEC 60909 short-circuit studies.
- * - Protection selectivity/coordination studies.
- * - Detailed motor starting studies.
- * - Complete earthing-grid design.
- * - Detailed harmonic studies.
+ * The engineer can later override automatically selected equipment
+ * from the UI, followed by full revalidation.
  */
 object AutoDesignService {
 
@@ -255,8 +242,9 @@ object AutoDesignService {
         if (verifiedTransformers.isEmpty()) {
 
             return TransformerResult(
-                requiredKVA = demandKVA *
-                        (1.0 + designMarginPercent / 100.0),
+                requiredKVA =
+                    demandKVA *
+                            (1.0 + designMarginPercent / 100.0),
                 selectedTransformer = null,
                 selectedKVA = null,
                 primaryVoltageV = null,
@@ -360,7 +348,7 @@ object AutoDesignService {
                         (
                             validationResult.errors +
                                     validationResult.warnings
-                            ).distinct()
+                        ).distinct()
                 )
             }
 
@@ -368,11 +356,24 @@ object AutoDesignService {
                 validationResult.warnings
 
             // ----------------------------------------------------
-            // 2. Calculate total demand
+            // 2. Calculate TOTAL DEMAND through the Core
+            //
+            // IMPORTANT:
+            // Do NOT use:
+            // system.totalDemandLoadKVA()
+            //
+            // DistributionModel must not be the engineering
+            // calculation engine.
             // ----------------------------------------------------
 
+            val loadCalculation =
+                calculateSystemLoadCalculation(system)
+
+            systemWarnings +=
+                loadCalculation.trace.warnings
+
             val demandKVA =
-                system.totalDemandLoadKVA()
+                loadCalculation.demandKVA
 
             if (demandKVA <= 0.0) {
 
@@ -384,16 +385,15 @@ object AutoDesignService {
                         "DATA_REQUIRED: total demand load is required.",
                     warnings =
                         listOf(
-                            "No valid demand load was found."
-                        )
+                            "No valid demand load was found.",
+                            "Demand calculation was performed by ProfessionalEngineeringCore."
+                        ) +
+                                loadCalculation.trace.warnings
                 )
             }
 
             // ----------------------------------------------------
             // 3. Transformer node
-            //
-            // We require the actual configured voltage.
-            // We do NOT silently replace it with 400 V.
             // ----------------------------------------------------
 
             val transformerNode =
@@ -435,11 +435,6 @@ object AutoDesignService {
 
             // ----------------------------------------------------
             // 4. Transformer selection
-            //
-            // Frequency is intentionally left null here.
-            // The verified catalog determines the transformer's
-            // actual frequency instead of the service inventing
-            // 50 Hz.
             // ----------------------------------------------------
 
             val transformerDesign =
@@ -448,7 +443,7 @@ object AutoDesignService {
                     designMarginPercent = 0.0,
                     primaryVoltageV = null,
                     secondaryVoltageV = transformerVoltage,
-                    frequencyHz = null
+                    frequencyHz = system.frequencyHz()
                 )
 
             if (
@@ -466,7 +461,7 @@ object AutoDesignService {
                         (
                             transformerDesign.warnings +
                                     "Automatic design cannot continue without a verified compatible transformer."
-                            ).distinct()
+                        ).distinct()
                 )
             }
 
@@ -475,11 +470,6 @@ object AutoDesignService {
 
             // ----------------------------------------------------
             // 5. Transformer secondary short circuit
-            //
-            // This is the transformer secondary bus fault level.
-            //
-            // It uses the actual verified transformer impedance.
-            // No invented fault current is used.
             // ----------------------------------------------------
 
             val transformerShortCircuit =
@@ -591,7 +581,8 @@ object AutoDesignService {
                     (
                         listOf(
                             "Selected transformer: ${selectedTransformer.ratedPowerKVA} kVA.",
-                            "Transformer secondary short-circuit level: ${transformerShortCircuitKA} kA."
+                            "Transformer secondary short-circuit level: ${transformerShortCircuitKA} kA.",
+                            "Total demand calculated by ProfessionalEngineeringCore: ${demandKVA} kVA."
                         ) +
                                 systemWarnings
                         )
@@ -617,6 +608,89 @@ object AutoDesignService {
                         .distinct()
             )
         }
+    }
+
+    // ============================================================
+    // SYSTEM LOAD CALCULATION
+    //
+    // THIS IS THE IMPORTANT ARCHITECTURAL CHANGE.
+    //
+    // All demand/load/kVA/current calculations are delegated to
+    // ProfessionalEngineeringCore.
+    //
+    // DistributionModel is data only.
+    // ============================================================
+
+    private fun calculateSystemLoadCalculation(
+        system: DistributionSystem
+    ): ProfessionalEngineeringCore.LoadCalculationResult {
+
+        val allLoads =
+            system.nodes
+                .flatMap { node ->
+                    node.loads
+                }
+
+        if (allLoads.isEmpty()) {
+
+            return ProfessionalEngineeringCore.calculateLoads(
+                loads = emptyList(),
+                system =
+                    ProfessionalEngineeringCore.SystemInput(
+                        voltageV =
+                            system.getTransformer()
+                                ?.voltage
+                                ?.takeIf { it > 0.0 }
+                                ?: 0.0,
+
+                        frequencyHz =
+                            system.frequencyHz(),
+
+                        phaseSystem =
+                            ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE,
+
+                        powerFactor = 1.0
+                    )
+            )
+        }
+
+        val systemVoltage =
+            system.getTransformer()
+                ?.voltage
+                ?.takeIf { it > 0.0 }
+                ?: allLoads
+                    .firstOrNull()
+                    ?.voltage
+                    ?.takeIf { it > 0.0 }
+                ?: 0.0
+
+        val loadInputs =
+            allLoads.map { load ->
+
+                ProfessionalEngineeringCore.LoadInput(
+                    name = load.name,
+                    quantity = load.quantity.toDouble(),
+                    unitPowerKW = load.unitKW,
+                    demandFactor = load.demandFactor,
+                    powerFactor = load.powerFactor
+                )
+            }
+
+        return ProfessionalEngineeringCore.calculateLoads(
+            loads = loadInputs,
+            system =
+                ProfessionalEngineeringCore.SystemInput(
+                    voltageV = systemVoltage,
+
+                    frequencyHz =
+                        system.frequencyHz(),
+
+                    phaseSystem =
+                        ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE,
+
+                    powerFactor = 1.0
+                )
+        )
     }
 
     // ============================================================
@@ -685,7 +759,8 @@ object AutoDesignService {
         val designCurrent =
             calculateDesignCurrent(
                 node = node,
-                feeder = feeder
+                feeder = feeder,
+                frequencyHz = system.frequencyHz()
             )
 
         if (designCurrent <= 0.0) {
@@ -738,17 +813,16 @@ object AutoDesignService {
                 PhaseType.SINGLE_PHASE_L1,
                 PhaseType.SINGLE_PHASE_L2,
                 PhaseType.SINGLE_PHASE_L3 ->
+
                     ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
 
                 PhaseType.THREE_PHASE ->
+
                     ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
             }
 
         // --------------------------------------------------------
         // 5. Loaded conductors
-        //
-        // This value describes the current-carrying conductors.
-        // It is not used as an invented correction factor.
         // --------------------------------------------------------
 
         val loadedConductors =
@@ -780,10 +854,6 @@ object AutoDesignService {
 
         // --------------------------------------------------------
         // 7. Correction factor
-        //
-        // The total factor must be supplied by the feeder design
-        // data. The service does not invent separate IEC correction
-        // factors.
         // --------------------------------------------------------
 
         val correctionFactor =
@@ -803,11 +873,10 @@ object AutoDesignService {
         }
 
         // --------------------------------------------------------
-        // 8. Cable search limit
+        // 8. Search limit
         //
-        // This is only an algorithmic search limit.
-        // It is NOT an engineering assumption about the number
-        // of parallel cables required.
+        // Algorithmic limit only.
+        // It is NOT an engineering assumption.
         // --------------------------------------------------------
 
         val maximumParallelRuns =
@@ -815,8 +884,6 @@ object AutoDesignService {
 
         // --------------------------------------------------------
         // 9. Maximum voltage drop
-        //
-        // Do not silently convert a missing value to 5%.
         // --------------------------------------------------------
 
         val maximumVoltageDrop =
@@ -834,13 +901,6 @@ object AutoDesignService {
 
         // --------------------------------------------------------
         // 10. Cable design input
-        //
-        // Ambient temperature is kept at the reference condition
-        // expected by the embedded cable data. Actual correction
-        // is represented by correctionFactorTotal.
-        //
-        // It is NOT used as a hidden engineering temperature
-        // correction.
         // --------------------------------------------------------
 
         val cableInput =
@@ -961,12 +1021,9 @@ object AutoDesignService {
         // --------------------------------------------------------
         // 13. Short circuit
         //
-        // The transformer secondary bus fault level is used
-        // conservatively for breaker interrupting-capacity
-        // selection.
-        //
-        // This is NOT claimed to be the actual fault current
-        // at the end of the feeder.
+        // Conservative source fault level for breaker selection.
+        // This is explicitly NOT claimed to be the final feeder
+        // end fault current.
         // --------------------------------------------------------
 
         val shortCircuitKA =
@@ -1004,12 +1061,6 @@ object AutoDesignService {
 
         // --------------------------------------------------------
         // 14. Breaker poles
-        //
-        // 3-phase feeders use 3P because the current verified
-        // breaker catalog is primarily based on 3-pole MCCBs.
-        //
-        // A future UI option can explicitly select 4P where
-        // neutral switching/protection is required.
         // --------------------------------------------------------
 
         val requiredPoles =
@@ -1236,11 +1287,12 @@ object AutoDesignService {
 
     private fun calculateDesignCurrent(
         node: DistributionNode,
-        feeder: FeederDesign
+        feeder: FeederDesign,
+        frequencyHz: Double
     ): Double {
 
         // --------------------------------------------------------
-        // Manual/previously calculated design current has priority.
+        // Manual / previously calculated design current
         // --------------------------------------------------------
 
         if (feeder.designCurrentIb > 0.0) {
@@ -1290,11 +1342,7 @@ object AutoDesignService {
             ProfessionalEngineeringCore.SystemInput(
                 voltageV = node.voltage,
 
-                // Frequency is not used to invent current.
-                // 50 Hz is not required by the load-current formula.
-                // The value remains only a technical input required
-                // by the Core API.
-                frequencyHz = 50.0,
+                frequencyHz = frequencyHz,
 
                 phaseSystem = phaseSystem,
 
@@ -1313,6 +1361,13 @@ object AutoDesignService {
 
     // ============================================================
     // POWER FACTOR
+    //
+    // NOTE:
+    // This is retained temporarily for compatibility with the
+    // current data model.
+    //
+    // The next cleanup step should move aggregate PF calculation
+    // completely into ProfessionalEngineeringCore as well.
     // ============================================================
 
     private fun determinePowerFactor(
@@ -1334,7 +1389,11 @@ object AutoDesignService {
 
         val weightedPower =
             validLoads.sumOf {
-                it.demandKW()
+                it.connectedKW() *
+                        it.demandFactor.coerceIn(
+                            0.0,
+                            1.0
+                        )
             }
 
         if (weightedPower <= 0.0) {
@@ -1360,7 +1419,13 @@ object AutoDesignService {
         val weightedPF =
             validLoads.sumOf { load ->
 
-                load.demandKW() *
+                (
+                    load.connectedKW() *
+                            load.demandFactor.coerceIn(
+                                0.0,
+                                1.0
+                            )
+                    ) *
                         load.powerFactor
 
             } / weightedPower
@@ -1388,7 +1453,7 @@ object AutoDesignService {
             mutableListOf<String>()
 
         // --------------------------------------------------------
-        // Basic input validation
+        // Input validation
         // --------------------------------------------------------
 
         if (designCurrentA <= 0.0) {
@@ -1454,11 +1519,7 @@ object AutoDesignService {
         }
 
         // --------------------------------------------------------
-        // Ics >= Ik when verified
-        //
-        // If Ics is unavailable, the service does not invent a
-        // value. The Core's breaker catalog determines whether
-        // the value is available.
+        // Ics >= Ik when Ics is available
         // --------------------------------------------------------
 
         val serviceBreakingCapacityPassed =
