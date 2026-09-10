@@ -1,5 +1,6 @@
 package com.electricaldesignengineer.app
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -8,18 +9,15 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -28,7 +26,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun CableSizingScreen(
 onBack: () -> Unit = {}
@@ -53,7 +50,7 @@ var designCurrent by remember {
 var length by remember {
     mutableStateOf(
         if (project.cableLengthM > 0.0) {
-            project.cableLengthM.toString()
+            "%.2f".format(project.cableLengthM)
         } else {
             ""
         }
@@ -63,7 +60,7 @@ var length by remember {
 var voltage by remember {
     mutableStateOf(
         if (project.voltageV > 0.0) {
-            project.voltageV.toString()
+            "%.2f".format(project.voltageV)
         } else {
             ""
         }
@@ -73,11 +70,15 @@ var voltage by remember {
 var powerFactor by remember {
     mutableStateOf(
         if (project.powerFactor > 0.0) {
-            project.powerFactor.toString()
+            "%.3f".format(project.powerFactor)
         } else {
             ""
         }
     )
+}
+
+var maximumVoltageDrop by remember {
+    mutableStateOf("5.0")
 }
 
 var isThreePhase by remember {
@@ -96,140 +97,147 @@ var installationMethod by remember {
     mutableStateOf(InstallationMethod.CABLE_TRAY)
 }
 
-var maximumVoltageDrop by remember {
-    mutableStateOf("5.0")
-}
+// ============================================================
+// SELECTION MODE
+// ============================================================
 
-var selectedCableSize by remember {
-    mutableStateOf<Double?>(null)
-}
-
-var manualMode by remember {
+var engineerOverride by remember {
     mutableStateOf(false)
 }
 
-var result by remember {
-    mutableStateOf("")
-}
-
-var errorMessage by remember {
-    mutableStateOf("")
+var selectedManualSize by remember {
+    mutableStateOf<Double?>(null)
 }
 
 // ============================================================
-// VERIFIED CABLE CATALOG
+// RESULT
 // ============================================================
 
-val availableCables =
-    remember(
-        material,
-        insulation,
-        installationMethod
-    ) {
-        EngineeringCatalogRepository
-            .getCableData(
-                material = material,
-                insulation = insulation,
-                installationMethod = installationMethod
-            )
-            .filter {
-                it.sizeMm2 > 0.0 &&
-                    it.baseAmpacityA > 0.0 &&
-                    it.source.isNotBlank() &&
-                    it.revision.isNotBlank()
-            }
-            .sortedBy {
-                it.sizeMm2
-            }
-    }
+var resultText by remember {
+    mutableStateOf("")
+}
+
+var errorText by remember {
+    mutableStateOf("")
+}
 
 // ============================================================
-// CABLE ENGINEERING CALCULATION
+// VERIFIED CABLE DATA
+// ============================================================
+
+val availableCables = remember(
+    material,
+    insulation,
+    installationMethod
+) {
+
+    EngineeringCatalogRepository
+        .getCableData(
+            material = material,
+            insulation = insulation,
+            installationMethod = installationMethod
+        )
+        .filter {
+            it.sizeMm2 > 0.0 &&
+                it.baseAmpacityA > 0.0 &&
+                it.resistanceOhmPerKm > 0.0 &&
+                it.source.isNotBlank() &&
+                it.revision.isNotBlank()
+        }
+        .sortedBy {
+            it.sizeMm2
+        }
+}
+
+// ============================================================
+// CALCULATION
 // ============================================================
 
 fun calculateCable() {
 
-    result = ""
-    errorMessage = ""
+    resultText = ""
+    errorText = ""
 
     val current =
         designCurrent
+            .replace(',', '.')
             .toDoubleOrNull()
-            ?.takeIf { it > 0.0 }
 
     val cableLength =
         length
+            .replace(',', '.')
             .toDoubleOrNull()
-            ?.takeIf { it > 0.0 }
 
-    val v =
+    val systemVoltage =
         voltage
+            .replace(',', '.')
             .toDoubleOrNull()
-            ?.takeIf { it > 0.0 }
 
     val pf =
         powerFactor
+            .replace(',', '.')
             .toDoubleOrNull()
-            ?.takeIf {
-                it > 0.0 && it <= 1.0
-            }
 
     val maxDrop =
         maximumVoltageDrop
+            .replace(',', '.')
             .toDoubleOrNull()
-            ?.takeIf { it > 0.0 }
 
-    if (current == null) {
-        errorMessage =
+    // --------------------------------------------------------
+    // INPUT VALIDATION
+    // --------------------------------------------------------
+
+    if (current == null || current <= 0.0) {
+        errorText =
             "Design current must be greater than zero."
         return
     }
 
-    if (cableLength == null) {
-        errorMessage =
+    if (cableLength == null || cableLength <= 0.0) {
+        errorText =
             "Cable length must be greater than zero."
         return
     }
 
-    if (v == null) {
-        errorMessage =
-            "Voltage must be greater than zero."
+    if (systemVoltage == null || systemVoltage <= 0.0) {
+        errorText =
+            "System voltage must be greater than zero."
         return
     }
 
-    if (pf == null) {
-        errorMessage =
-            "Power factor must be between 0 and 1."
+    if (pf == null || pf !in 0.01..1.0) {
+        errorText =
+            "Power factor must be between 0.01 and 1.00."
         return
     }
 
-    if (maxDrop == null) {
-        errorMessage =
+    if (maxDrop == null || maxDrop <= 0.0) {
+        errorText =
             "Maximum voltage drop must be greater than zero."
         return
     }
 
     if (availableCables.isEmpty()) {
-        errorMessage =
+        errorText =
             "No verified cable data is available for the selected configuration."
         return
     }
 
     if (
-        manualMode &&
-        selectedCableSize == null
+        engineerOverride &&
+        selectedManualSize == null
     ) {
-        errorMessage =
-            "Select a cable size for engineer override."
+        errorText =
+            "Select a verified cable size for Engineer Override."
         return
     }
 
-    // ========================================================
+    // --------------------------------------------------------
     // SAVE SYSTEM DATA
-    // ========================================================
+    // --------------------------------------------------------
 
     ProjectManager.updateSystem(
-        voltageV = v,
+        voltageV = systemVoltage,
         powerFactor = pf,
         isThreePhase = isThreePhase
     )
@@ -241,9 +249,9 @@ fun calculateCable() {
             ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
         }
 
-    // ========================================================
-    // VERIFIED CATALOG PROVIDER
-    // ========================================================
+    // --------------------------------------------------------
+    // CORE DATA PROVIDER
+    // --------------------------------------------------------
 
     val provider =
         object :
@@ -254,9 +262,7 @@ fun calculateCable() {
                 insulation: InsulationType,
                 installationMethod: InstallationMethod
             ):
-                List<
-                    ProfessionalEngineeringCore.CableData
-                > {
+                List<ProfessionalEngineeringCore.CableData> {
 
                 val catalog =
                     EngineeringCatalogRepository
@@ -269,46 +275,57 @@ fun calculateCable() {
                         .filter {
                             it.sizeMm2 > 0.0 &&
                                 it.baseAmpacityA > 0.0 &&
+                                it.resistanceOhmPerKm > 0.0 &&
                                 it.source.isNotBlank() &&
                                 it.revision.isNotBlank()
                         }
+                        .sortedBy {
+                            it.sizeMm2
+                        }
 
-                if (!manualMode) {
+                if (!engineerOverride) {
                     return catalog
                 }
 
-                val selected =
-                    selectedCableSize
+                val manualSize =
+                    selectedManualSize
                         ?: return emptyList()
 
                 return catalog.filter {
                     kotlin.math.abs(
-                        it.sizeMm2 - selected
-                    ) < 0.0001
+                        it.sizeMm2 - manualSize
+                    ) < 0.000001
                 }
             }
         }
 
-    // ========================================================
-    // PROFESSIONAL ENGINEERING CORE
-    // ========================================================
+    // --------------------------------------------------------
+    // ENGINEERING INPUT
+    // --------------------------------------------------------
 
     val input =
         ProfessionalEngineeringCore.CableDesignInput(
 
-            designCurrentA = current,
+            designCurrentA =
+                current,
 
-            lengthM = cableLength,
+            lengthM =
+                cableLength,
 
-            voltageV = v,
+            voltageV =
+                systemVoltage,
 
-            powerFactor = pf,
+            powerFactor =
+                pf,
 
-            phaseSystem = phaseSystem,
+            phaseSystem =
+                phaseSystem,
 
-            conductorMaterial = material,
+            conductorMaterial =
+                material,
 
-            insulation = insulation,
+            insulation =
+                insulation,
 
             installationMethod =
                 installationMethod,
@@ -316,47 +333,55 @@ fun calculateCable() {
             numberOfLoadedConductors =
                 if (isThreePhase) 3 else 2,
 
-            ambientTemperatureC = 30.0,
+            ambientTemperatureC =
+                30.0,
 
-            groupingFactor = 1.0,
+            groupingFactor =
+                1.0,
 
-            thermalInsulationFactor = 1.0,
+            thermalInsulationFactor =
+                1.0,
 
-            soilCorrectionFactor = 1.0,
+            soilCorrectionFactor =
+                1.0,
 
             maximumVoltageDropPercent =
                 maxDrop,
 
-            maximumParallelRuns = 8
+            maximumParallelRuns =
+                8
         )
 
-    val calculation =
-        ProfessionalEngineeringCore
-            .designCable(
-                input = input,
-                provider = provider
-            )
+    // --------------------------------------------------------
+    // SINGLE ENGINEERING CORE
+    // --------------------------------------------------------
 
-    // ========================================================
-    // VALIDATE ENGINEERING RESULT
-    // ========================================================
+    val calculation =
+        ProfessionalEngineeringCore.designCable(
+            input = input,
+            provider = provider
+        )
+
+    // --------------------------------------------------------
+    // RESULT VALIDATION
+    // --------------------------------------------------------
 
     val selected =
         calculation.selectedCable
 
     if (selected == null) {
 
-        errorMessage =
+        errorText =
             when (calculation.status) {
 
                 EngineeringStatus.DATA_REQUIRED ->
-                    "DATA REQUIRED: verified cable engineering data is missing."
+                    "DATA REQUIRED: verified cable engineering data is incomplete."
 
                 EngineeringStatus.FAIL ->
-                    "No cable configuration satisfies the ampacity and voltage-drop requirements."
+                    "No cable configuration satisfies the design requirements."
 
                 EngineeringStatus.WARNING ->
-                    "Cable calculation returned a warning without a valid selected cable."
+                    "WARNING: the calculation did not produce a valid cable."
 
                 else ->
                     "No suitable cable was found."
@@ -365,12 +390,9 @@ fun calculateCable() {
         return
     }
 
-    // ========================================================
-    // SAVE RESULT
-    // ========================================================
-
-    selectedCableSize =
-        selected.sizeMm2
+    // --------------------------------------------------------
+    // SAVE TO PROJECT
+    // --------------------------------------------------------
 
     ProjectManager.setCableResult(
 
@@ -390,16 +412,16 @@ fun calculateCable() {
             calculation.voltageDropPercent
     )
 
-    // ========================================================
-    // RESULT
-    // ========================================================
+    // --------------------------------------------------------
+    // RESULT TEXT
+    // --------------------------------------------------------
 
-    result =
+    resultText =
         buildString {
 
             appendLine(
-                if (manualMode) {
-                    "ENGINEER OVERRIDE — CABLE VALIDATED"
+                if (engineerOverride) {
+                    "ENGINEER OVERRIDE — VALIDATED"
                 } else {
                     "AUTOMATIC CABLE SELECTION"
                 }
@@ -408,29 +430,24 @@ fun calculateCable() {
             appendLine()
 
             appendLine(
-                "Cable Size: %.1f mm²"
+                "Cable Size : %.1f mm²"
+                    .format(selected.sizeMm2)
+            )
+
+            appendLine(
+                "Parallel Runs : %d"
+                    .format(calculation.parallelRuns)
+            )
+
+            appendLine(
+                "Ampacity / Run : %.2f A"
                     .format(
-                        selected.sizeMm2
+                        calculation.correctedAmpacityPerRunA
                     )
             )
 
             appendLine(
-                "Parallel Runs: %d"
-                    .format(
-                        calculation.parallelRuns
-                    )
-            )
-
-            appendLine(
-                "Ampacity / Run: %.2f A"
-                    .format(
-                        calculation
-                            .correctedAmpacityPerRunA
-                    )
-            )
-
-            appendLine(
-                "Total Ampacity: %.2f A"
+                "Total Ampacity Iz : %.2f A"
                     .format(
                         calculation.totalAmpacityA
                     )
@@ -439,19 +456,19 @@ fun calculateCable() {
             appendLine()
 
             appendLine(
-                "Design Current Ib: %.2f A"
+                "Design Current Ib : %.2f A"
                     .format(current)
             )
 
             appendLine(
-                "Voltage Drop: %.2f V"
+                "Voltage Drop : %.2f V"
                     .format(
                         calculation.voltageDropV
                     )
             )
 
             appendLine(
-                "Voltage Drop: %.2f %%"
+                "Voltage Drop : %.2f %%"
                     .format(
                         calculation.voltageDropPercent
                     )
@@ -460,52 +477,51 @@ fun calculateCable() {
             appendLine()
 
             appendLine(
-                "Material: ${material.name}"
+                "Material : ${material.name}"
             )
 
             appendLine(
-                "Insulation: ${insulation.name}"
+                "Insulation : ${insulation.name}"
             )
 
             appendLine(
-                "Installation: ${installationMethod.name}"
-            )
-
-            appendLine()
-
-            appendLine(
-                "Status: ${calculation.status}"
+                "Installation : ${installationMethod.name}"
             )
 
             appendLine()
 
             appendLine(
-                "Source: ${selected.source}"
+                "Status : ${calculation.status}"
+            )
+
+            appendLine()
+
+            appendLine(
+                "Data Source : ${selected.source}"
             )
 
             appendLine(
-                "Revision: ${selected.revision}"
+                "Data Revision : ${selected.revision}"
             )
         }
 }
 
 // ============================================================
-// UI
+// SCREEN
 // ============================================================
 
 Column(
-
     modifier =
         Modifier
             .fillMaxSize()
             .verticalScroll(
-                rememberScrollState()
+                androidx.compose.foundation
+                    .rememberScrollState()
             )
             .padding(16.dp),
 
     verticalArrangement =
         Arrangement.spacedBy(10.dp)
-
 ) {
 
     Text(
@@ -531,6 +547,10 @@ Column(
 
     HorizontalDivider()
 
+    // ========================================================
+    // DESIGN INPUTS
+    // ========================================================
+
     Text(
         text = "Design Inputs",
         style =
@@ -546,7 +566,8 @@ Column(
             Text("Design Current Ib (A)")
         },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth()
+        modifier =
+            Modifier.fillMaxWidth()
     )
 
     OutlinedTextField(
@@ -558,7 +579,8 @@ Column(
             Text("Cable Length (m)")
         },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth()
+        modifier =
+            Modifier.fillMaxWidth()
     )
 
     OutlinedTextField(
@@ -567,10 +589,11 @@ Column(
             voltage = it
         },
         label = {
-            Text("Voltage (V)")
+            Text("System Voltage (V)")
         },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth()
+        modifier =
+            Modifier.fillMaxWidth()
     )
 
     OutlinedTextField(
@@ -582,7 +605,21 @@ Column(
             Text("Power Factor")
         },
         singleLine = true,
-        modifier = Modifier.fillMaxWidth()
+        modifier =
+            Modifier.fillMaxWidth()
+    )
+
+    OutlinedTextField(
+        value = maximumVoltageDrop,
+        onValueChange = {
+            maximumVoltageDrop = it
+        },
+        label = {
+            Text("Maximum Voltage Drop (%)")
+        },
+        singleLine = true,
+        modifier =
+            Modifier.fillMaxWidth()
     )
 
     Text(
@@ -605,7 +642,6 @@ Column(
             modifier =
                 Modifier.weight(1f)
         ) {
-
             Text(
                 if (isThreePhase) {
                     "✓ 3 Phase"
@@ -622,7 +658,6 @@ Column(
             modifier =
                 Modifier.weight(1f)
         ) {
-
             Text(
                 if (!isThreePhase) {
                     "✓ 1 Phase"
@@ -635,6 +670,10 @@ Column(
 
     HorizontalDivider()
 
+    // ========================================================
+    // CABLE DATA
+    // ========================================================
+
     Text(
         text = "Cable Data",
         style =
@@ -645,15 +684,17 @@ Column(
         label = "Conductor Material",
         value = material.name,
         options =
-            CableMaterial.entries.map {
-                it.name
-            },
+            CableMaterial
+                .values()
+                .map { it.name },
         onSelected = { value ->
 
             material =
                 CableMaterial.valueOf(value)
 
-            selectedCableSize = null
+            selectedManualSize = null
+            resultText = ""
+            errorText = ""
         }
     )
 
@@ -661,15 +702,17 @@ Column(
         label = "Insulation",
         value = insulation.name,
         options =
-            InsulationType.entries.map {
-                it.name
-            },
+            InsulationType
+                .values()
+                .map { it.name },
         onSelected = { value ->
 
             insulation =
                 InsulationType.valueOf(value)
 
-            selectedCableSize = null
+            selectedManualSize = null
+            resultText = ""
+            errorText = ""
         }
     )
 
@@ -678,9 +721,9 @@ Column(
         value =
             installationMethod.name,
         options =
-            InstallationMethod.entries.map {
-                it.name
-            },
+            InstallationMethod
+                .values()
+                .map { it.name },
         onSelected = { value ->
 
             installationMethod =
@@ -688,28 +731,29 @@ Column(
                     value
                 )
 
-            selectedCableSize = null
+            selectedManualSize = null
+            resultText = ""
+            errorText = ""
         }
     )
 
-    OutlinedTextField(
-        value = maximumVoltageDrop,
-        onValueChange = {
-            maximumVoltageDrop = it
-        },
-        label = {
-            Text(
-                "Maximum Voltage Drop (%)"
-            )
-        },
-        singleLine = true,
-        modifier = Modifier.fillMaxWidth()
+    Text(
+        text =
+            "Verified catalog cables available: ${
+                availableCables.size
+            }",
+        style =
+            MaterialTheme.typography.bodySmall
     )
+
+    // ========================================================
+    // SELECTION MODE
+    // ========================================================
 
     HorizontalDivider()
 
     Text(
-        text = "Cable Selection",
+        text = "Cable Selection Mode",
         style =
             MaterialTheme.typography.titleMedium
     )
@@ -724,8 +768,10 @@ Column(
         Button(
             onClick = {
 
-                manualMode = false
-                selectedCableSize = null
+                engineerOverride = false
+                selectedManualSize = null
+                resultText = ""
+                errorText = ""
 
             },
             modifier =
@@ -733,7 +779,7 @@ Column(
         ) {
 
             Text(
-                if (!manualMode) {
+                if (!engineerOverride) {
                     "✓ Automatic"
                 } else {
                     "Automatic"
@@ -744,8 +790,9 @@ Column(
         OutlinedButton(
             onClick = {
 
-                manualMode = true
-                selectedCableSize = null
+                engineerOverride = true
+                resultText = ""
+                errorText = ""
 
             },
             modifier =
@@ -753,27 +800,23 @@ Column(
         ) {
 
             Text(
-                if (manualMode) {
-                    "✓ Engineer Override"
+                if (engineerOverride) {
+                    "✓ Engineer"
                 } else {
-                    "Engineer Override"
+                    "Engineer"
                 }
             )
         }
     }
 
-    Text(
-        text =
-            if (manualMode) {
-                "Engineer Override: select a catalog cable. The engineering core will validate it against the design current and voltage-drop requirement."
-            } else {
-                "Automatic: the program selects the smallest verified cable configuration that satisfies the engineering requirements."
-            },
-        style =
-            MaterialTheme.typography.bodySmall
-    )
+    if (engineerOverride) {
 
-    if (manualMode) {
+        Text(
+            text =
+                "Engineer Override: choose a verified catalog cable. The Professional Engineering Core will validate the selected cable against ampacity and voltage-drop requirements.",
+            style =
+                MaterialTheme.typography.bodySmall
+        )
 
         if (availableCables.isEmpty()) {
 
@@ -782,67 +825,48 @@ Column(
                     Modifier.fillMaxWidth()
             ) {
 
-                Column(
+                Text(
+                    text =
+                        "No verified cable data is available.",
                     modifier =
                         Modifier.padding(12.dp)
-                ) {
-
-                    Text(
-                        text =
-                            "No verified cable data available.",
-                        style =
-                            MaterialTheme
-                                .typography
-                                .titleSmall
-                    )
-                }
+                )
             }
 
         } else {
 
             EngineeringDropdown(
-                label = "Engineer Cable Selection",
+                label = "Engineer Cable Size",
                 value =
-                    selectedCableSize
+                    selectedManualSize
                         ?.let {
-                            "%.1f mm²"
-                                .format(it)
+                            "%.1f mm²".format(it)
                         }
-                        ?: "Select cable",
+                        ?: "Select cable size",
 
                 options =
                     availableCables.map {
                         "%.1f mm²"
-                            .format(
-                                it.sizeMm2
-                            )
+                            .format(it.sizeMm2)
                     },
 
                 onSelected = { value ->
 
-                    selectedCableSize =
+                    selectedManualSize =
                         value
-                            .removeSuffix(
-                                " mm²"
-                            )
+                            .removeSuffix(" mm²")
                             .toDoubleOrNull()
+
+                    resultText = ""
+                    errorText = ""
                 }
             )
         }
     }
 
-    if (selectedCableSize != null) {
-
-        Text(
-            text =
-                "Selected Cable: %.1f mm²"
-                    .format(
-                        selectedCableSize
-                    ),
-            style =
-                MaterialTheme.typography.titleSmall
-        )
-    }
+    // ========================================================
+    // CALCULATE
+    // ========================================================
 
     Button(
         onClick = {
@@ -853,20 +877,24 @@ Column(
     ) {
 
         Text(
-            if (manualMode) {
-                "VALIDATE & SAVE CABLE"
+            if (engineerOverride) {
+                "VALIDATE ENGINEER CABLE"
             } else {
-                "AUTO SELECT & SAVE CABLE"
+                "AUTO SELECT CABLE"
             }
         )
     }
 
-    if (errorMessage.isNotBlank()) {
+    // ========================================================
+    // ERROR
+    // ========================================================
+
+    if (errorText.isNotBlank()) {
 
         HorizontalDivider()
 
         Text(
-            text = errorMessage,
+            text = errorText,
             color =
                 MaterialTheme.colorScheme.error,
             style =
@@ -874,19 +902,31 @@ Column(
         )
     }
 
-    if (result.isNotBlank()) {
+    // ========================================================
+    // CALCULATION RESULT
+    // ========================================================
+
+    if (resultText.isNotBlank()) {
 
         HorizontalDivider()
 
-        Text(
-            text = result,
-            style =
-                MaterialTheme.typography.bodyMedium
-        )
+        Card(
+            modifier =
+                Modifier.fillMaxWidth()
+        ) {
+
+            Text(
+                text = resultText,
+                modifier =
+                    Modifier.padding(14.dp),
+                style =
+                    MaterialTheme.typography.bodyMedium
+            )
+        }
     }
 
     // ========================================================
-    // CURRENT PROJECT RESULT
+    // PROJECT STORED RESULT
     // ========================================================
 
     HorizontalDivider()
@@ -897,63 +937,42 @@ Column(
             MaterialTheme.typography.titleMedium
     )
 
+    val stored =
+        ProjectManager.calculation
+
     Text(
         text =
             "Cable Size: %.1f mm²"
-                .format(
-                    ProjectManager
-                        .calculation
-                        .cableSizeMm2
-                )
+                .format(stored.cableSizeMm2)
     )
 
     Text(
         text =
-            "Cable Ampacity Iz: %.2f A"
-                .format(
-                    ProjectManager
-                        .calculation
-                        .cableAmpacityA
-                )
+            "Ampacity Iz: %.2f A"
+                .format(stored.cableAmpacityA)
     )
 
     Text(
         text =
-            "Cable Length: %.2f m"
-                .format(
-                    ProjectManager
-                        .calculation
-                        .cableLengthM
-                )
+            "Length: %.2f m"
+                .format(stored.cableLengthM)
     )
 
     Text(
         text =
             "Voltage Drop: %.2f V"
-                .format(
-                    ProjectManager
-                        .calculation
-                        .voltageDropV
-                )
+                .format(stored.voltageDropV)
     )
 
     Text(
         text =
             "Voltage Drop: %.2f %%"
-                .format(
-                    ProjectManager
-                        .calculation
-                        .voltageDropPercent
-                )
+                .format(stored.voltageDropPercent)
     )
 
     Text(
         text =
-            "Design Status: ${
-                ProjectManager
-                    .calculation
-                    .designStatus
-            }"
+            "Design Status: ${stored.designStatus}"
     )
 
     Spacer(
@@ -966,8 +985,70 @@ Column(
         modifier =
             Modifier.fillMaxWidth()
     ) {
-
         Text("Back")
+    }
+}
+
+}
+
+// =================================================================
+// GENERIC LOCAL DROPDOWN
+// =================================================================
+
+@Composable
+private fun EngineeringDropdown(
+label: String,
+value: String,
+options: List<String>,
+onSelected: (String) -> Unit
+) {
+
+var expanded by remember {
+    mutableStateOf(false)
+}
+
+Column(
+    modifier =
+        Modifier.fillMaxWidth()
+) {
+
+    OutlinedTextField(
+        value = value,
+        onValueChange = {},
+        readOnly = true,
+        label = {
+            Text(label)
+        },
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clickable {
+                    expanded = true
+                }
+    )
+
+    DropdownMenu(
+        expanded = expanded,
+        onDismissRequest = {
+            expanded = false
+        },
+        modifier =
+            Modifier.fillMaxWidth()
+    ) {
+
+        options.forEach { option ->
+
+            DropdownMenuItem(
+                text = {
+                    Text(option)
+                },
+                onClick = {
+
+                    expanded = false
+                    onSelected(option)
+                }
+            )
+        }
     }
 }
 
