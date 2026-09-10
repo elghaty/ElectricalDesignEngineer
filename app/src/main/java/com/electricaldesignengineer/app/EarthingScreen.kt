@@ -24,245 +24,318 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun EarthingScreen(
-    onBack: () -> Unit = {}
+onBack: () -> Unit = {}
+) {
+val project = ProjectManager.calculation
+
+var earthResistance by remember {
+    mutableStateOf(
+        if (project.earthResistanceOhm > 0.0) {
+            "%.2f".format(project.earthResistanceOhm)
+        } else {
+            "1.00"
+        }
+    )
+}
+
+var faultCurrent by remember {
+    mutableStateOf(
+        if (project.earthFaultCurrentA > 0.0) {
+            "%.2f".format(project.earthFaultCurrentA)
+        } else {
+            ""
+        }
+    )
+}
+
+var permissibleTouchVoltage by remember {
+    mutableStateOf("50")
+}
+
+var result by remember {
+    mutableStateOf("")
+}
+
+Column(
+    modifier = Modifier
+        .fillMaxSize()
+        .verticalScroll(rememberScrollState())
+        .padding(16.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp)
 ) {
 
-    val project = ProjectManager.calculation
+    Text(
+        text = "Earthing",
+        style = MaterialTheme.typography.headlineSmall
+    )
 
-    var earthResistance by remember {
-        mutableStateOf(
-            if (project.earthResistanceOhm > 0.0) {
-                "%.2f".format(project.earthResistanceOhm)
-            } else {
-                "1.00"
+    Text(
+        text = "Project: ${
+            project.projectName.ifBlank {
+                "Current Project"
             }
-        )
-    }
+        }",
+        style = MaterialTheme.typography.bodyMedium
+    )
 
-    var faultCurrent by remember {
-        mutableStateOf(
-            if (project.earthFaultCurrentA > 0.0) {
-                "%.2f".format(project.earthFaultCurrentA)
+    HorizontalDivider()
+
+    Text(
+        text = "Earthing Design Input",
+        style = MaterialTheme.typography.titleMedium
+    )
+
+    OutlinedTextField(
+        value = earthResistance,
+        onValueChange = {
+            earthResistance = it
+        },
+        label = {
+            Text("Earth Resistance (Ω)")
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    OutlinedTextField(
+        value = faultCurrent,
+        onValueChange = {
+            faultCurrent = it
+        },
+        label = {
+            Text("Earth Fault Current (A)")
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    OutlinedTextField(
+        value = permissibleTouchVoltage,
+        onValueChange = {
+            permissibleTouchVoltage = it
+        },
+        label = {
+            Text("Permissible Touch Voltage (V)")
+        },
+        modifier = Modifier.fillMaxWidth()
+    )
+
+    Button(
+        onClick = {
+
+            val resistance =
+                earthResistance.toDoubleOrNull()
+
+            val fault =
+                faultCurrent.toDoubleOrNull()
+
+            val touchVoltage =
+                permissibleTouchVoltage.toDoubleOrNull()
+
+            if (
+                resistance == null ||
+                fault == null ||
+                touchVoltage == null
+            ) {
+                result =
+                    "Please enter valid numeric values."
+
             } else {
-                ""
-            }
-        )
-    }
 
-    var permissibleTouchVoltage by remember {
-        mutableStateOf("50")
-    }
+                val earth =
+                    ProfessionalEngineeringCore.calculateEarthing(
+                        input =
+                            ProfessionalEngineeringCore.EarthingInput(
+                                earthResistanceOhm = resistance,
+                                faultCurrentA = fault,
+                                permissibleTouchVoltageV = touchVoltage
+                            )
+                    )
 
-    var result by remember {
-        mutableStateOf("")
-    }
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-
-        Text(
-            text = "Earthing",
-            style = MaterialTheme.typography.headlineSmall
-        )
-
-        Text(
-            text = "Project: ${
-                project.projectName.ifBlank {
-                    "Current Project"
-                }
-            }",
-            style = MaterialTheme.typography.bodyMedium
-        )
-
-        HorizontalDivider()
-
-        Text(
-            text = "Earthing Design Input",
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        OutlinedTextField(
-            value = earthResistance,
-            onValueChange = {
-                earthResistance = it
-            },
-            label = {
-                Text("Earth Resistance (Ω)")
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        OutlinedTextField(
-            value = faultCurrent,
-            onValueChange = {
-                faultCurrent = it
-            },
-            label = {
-                Text("Earth Fault Current (A)")
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        OutlinedTextField(
-            value = permissibleTouchVoltage,
-            onValueChange = {
-                permissibleTouchVoltage = it
-            },
-            label = {
-                Text("Permissible Touch Voltage (V)")
-            },
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Button(
-            onClick = {
-
-                val resistance =
-                    earthResistance.toDoubleOrNull() ?: 0.0
-
-                val fault =
-                    faultCurrent.toDoubleOrNull() ?: 0.0
-
-                val touchVoltage =
-                    permissibleTouchVoltage
-                        .toDoubleOrNull()
-                        ?.coerceAtLeast(0.1)
-                        ?: 50.0
-
-                if (resistance <= 0.0 || fault <= 0.0) {
-
-                    result =
-                        "Please enter valid earth resistance and fault current."
-
-                } else {
-
-                    val earth =
-                        ElectricalCalculator.earthCheck(
-                            earthResistanceOhm = resistance,
-                            faultCurrentA = fault,
-                            permissibleTouchVoltageV = touchVoltage
-                        )
+                if (
+                    earth.status ==
+                    EngineeringStatus.PASS
+                ) {
 
                     ProjectManager.setEarthing(
-                        earthResistanceOhm = resistance,
-                        earthFaultCurrentA = fault,
+                        earthResistanceOhm =
+                            resistance,
+                        earthFaultCurrentA =
+                            fault,
                         earthPotentialRiseV =
                             earth.earthPotentialRiseV,
                         maximumEarthResistanceOhm =
                             earth.maximumResistanceOhm
                     )
-
-                    result = """
-                        EARTHING CHECK
-                        
-                        Earth Resistance:
-                        %.2f Ω
-                        
-                        Earth Fault Current:
-                        %.2f A
-                        
-                        Permissible Touch Voltage:
-                        %.2f V
-                        
-                        Earth Potential Rise:
-                        %.2f V
-                        
-                        Maximum Earth Resistance:
-                        %.2f Ω
-                        
-                        Design Result:
-                        %s
-                        
-                        Design Status:
-                        %s
-                        
-                        ✓ Earthing result saved to ProjectManager
-                    """.trimIndent().format(
-                        resistance,
-                        fault,
-                        touchVoltage,
-                        earth.earthPotentialRiseV,
-                        earth.maximumResistanceOhm,
-                        earth.status,
-                        ProjectManager.calculation.designStatus
-                    )
                 }
-            },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Calculate & Save Earthing")
-        }
 
-        if (result.isNotEmpty()) {
+                result = buildString {
 
-            HorizontalDivider()
+                    appendLine("EARTHING CHECK")
+                    appendLine()
 
-            Text(
-                text = result,
-                style = MaterialTheme.typography.bodyLarge
-            )
+                    appendLine(
+                        "Earth Resistance:"
+                    )
+                    appendLine(
+                        "%.2f Ω".format(
+                            resistance
+                        )
+                    )
+                    appendLine()
 
-            Spacer(
-                modifier = Modifier.height(4.dp)
-            )
+                    appendLine(
+                        "Earth Fault Current:"
+                    )
+                    appendLine(
+                        "%.2f A".format(
+                            fault
+                        )
+                    )
+                    appendLine()
 
-            Text(
-                text = "✓ Earthing result saved to ProjectManager",
-                style = MaterialTheme.typography.labelLarge
-            )
-        }
+                    appendLine(
+                        "Permissible Touch Voltage:"
+                    )
+                    appendLine(
+                        "%.2f V".format(
+                            touchVoltage
+                        )
+                    )
+                    appendLine()
+
+                    appendLine(
+                        "Earth Potential Rise:"
+                    )
+                    appendLine(
+                        "%.2f V".format(
+                            earth.earthPotentialRiseV
+                        )
+                    )
+                    appendLine()
+
+                    appendLine(
+                        "Maximum Earth Resistance:"
+                    )
+                    appendLine(
+                        "%.2f Ω".format(
+                            earth.maximumEarthResistanceOhm
+                        )
+                    )
+                    appendLine()
+
+                    appendLine(
+                        "Design Result:"
+                    )
+                    appendLine(
+                        earth.designResult
+                    )
+                    appendLine()
+
+                    appendLine(
+                        "Calculation Status:"
+                    )
+                    appendLine(
+                        earth.status.toString()
+                    )
+
+                    if (
+                        earth.status ==
+                        EngineeringStatus.PASS
+                    ) {
+                        appendLine()
+                        appendLine(
+                            "✓ Earthing result saved to ProjectManager"
+                        )
+                    }
+                }
+            }
+        },
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Calculate & Save Earthing")
+    }
+
+    if (result.isNotEmpty()) {
 
         HorizontalDivider()
 
         Text(
-            text = "Current Project Earthing",
-            style = MaterialTheme.typography.titleMedium
-        )
-
-        Text(
-            text = "Earth Resistance: %.2f Ω".format(
-                ProjectManager.calculation.earthResistanceOhm
-            )
-        )
-
-        Text(
-            text = "Earth Fault Current: %.2f A".format(
-                ProjectManager.calculation.earthFaultCurrentA
-            )
-        )
-
-        Text(
-            text = "Earth Potential Rise: %.2f V".format(
-                ProjectManager.calculation.earthPotentialRiseV
-            )
-        )
-
-        Text(
-            text = "Maximum Earth Resistance: %.2f Ω".format(
-                ProjectManager.calculation.maximumEarthResistanceOhm
-            )
-        )
-
-        Text(
-            text = "Design Status: ${
-                ProjectManager.calculation.designStatus
-            }"
+            text = result,
+            style = MaterialTheme.typography.bodyLarge
         )
 
         Spacer(
-            modifier = Modifier.height(10.dp)
+            modifier = Modifier.height(4.dp)
         )
 
-        Button(
-            onClick = onBack,
-            modifier = Modifier.fillMaxWidth()
+        if (
+            ProjectManager.calculation
+                .earthResistanceOhm > 0.0
         ) {
-            Text("Back")
+            Text(
+                text =
+                    "✓ Earthing result saved to ProjectManager",
+                style =
+                    MaterialTheme.typography.labelLarge
+            )
         }
     }
+
+    HorizontalDivider()
+
+    Text(
+        text = "Current Project Earthing",
+        style = MaterialTheme.typography.titleMedium
+    )
+
+    Text(
+        text =
+            "Earth Resistance: %.2f Ω".format(
+                ProjectManager.calculation
+                    .earthResistanceOhm
+            )
+    )
+
+    Text(
+        text =
+            "Earth Fault Current: %.2f A".format(
+                ProjectManager.calculation
+                    .earthFaultCurrentA
+            )
+    )
+
+    Text(
+        text =
+            "Earth Potential Rise: %.2f V".format(
+                ProjectManager.calculation
+                    .earthPotentialRiseV
+            )
+    )
+
+    Text(
+        text =
+            "Maximum Earth Resistance: %.2f Ω".format(
+                ProjectManager.calculation
+                    .maximumEarthResistanceOhm
+            )
+    )
+
+    Text(
+        text =
+            "Design Status: ${
+                ProjectManager.calculation.designStatus
+            }"
+    )
+
+    Spacer(
+        modifier = Modifier.height(10.dp)
+    )
+
+    Button(
+        onClick = onBack,
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Text("Back")
+    }
+}
+
 }
