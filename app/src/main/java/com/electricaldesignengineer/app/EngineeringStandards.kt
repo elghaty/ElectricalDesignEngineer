@@ -3,10 +3,10 @@ package com.electricaldesignengineer.app
 /**
  * Central engineering-standard registry.
  *
- * IMPORTANT:
- * A calculation must never claim standards compliance merely because
- * a formula exists. The calculation result must identify the standard
- * basis and the actual engineering data source used.
+ * This file contains standards references only.
+ * It does not perform engineering calculations.
+ *
+ * The ProfessionalEngineeringCore is the single calculation core.
  */
 object EngineeringStandards {
 
