@@ -1,27 +1,32 @@
 package com.electricaldesignengineer.app
 
+import kotlin.math.abs
+import kotlin.math.acos
 import kotlin.math.sqrt
+import kotlin.math.tan
 
 /**
  * Professional engineering calculation foundation.
  *
- * Architecture:
+ * ARCHITECTURE
  *
  * UI
  *   ↓
- * AutoDesignService
+ * ProjectManager / AutoDesignService
  *   ↓
  * ProfessionalEngineeringCore
  *   ↓
  * Engineering data providers / catalog
  *
- * This object is the single source of engineering calculations.
+ * IMPORTANT
+ * ----------
+ * This is the SINGLE engineering calculation core.
  *
- * IMPORTANT:
- * - No hardcoded manufacturer ratings.
- * - No guessed cable or transformer data.
- * - No hidden engineering assumptions.
- * - Missing engineering data returns DATA_REQUIRED.
+ * No calculation engine, legacy calculator, or extension core
+ * should duplicate engineering formulas outside this object.
+ *
+ * Engineering product ratings must come from verified catalog data.
+ * The core never invents manufacturer ratings.
  */
 object ProfessionalEngineeringCore {
 
@@ -42,7 +47,7 @@ object ProfessionalEngineeringCore {
     )
 
     // ============================================================
-    // LOAD
+    // LOAD CALCULATION
     // ============================================================
 
     data class LoadInput(
@@ -70,10 +75,6 @@ object ProfessionalEngineeringCore {
 
         val checks = mutableListOf<EngineeringCheck>()
 
-        // --------------------------------------------------------
-        // EMPTY LOAD LIST
-        // --------------------------------------------------------
-
         if (loads.isEmpty()) {
             return LoadCalculationResult(
                 connectedKW = 0.0,
@@ -93,18 +94,13 @@ object ProfessionalEngineeringCore {
             )
         }
 
-        // --------------------------------------------------------
-        // SYSTEM VALIDATION
-        // --------------------------------------------------------
-
         if (system.voltageV <= 0.0) {
             checks += EngineeringCheck(
                 name = "System voltage",
                 status = EngineeringStatus.FAIL,
                 calculatedValue = system.voltageV,
                 unit = "V",
-                message =
-                    "System voltage must be greater than zero."
+                message = "System voltage must be greater than zero."
             )
         }
 
@@ -114,8 +110,7 @@ object ProfessionalEngineeringCore {
                 status = EngineeringStatus.FAIL,
                 calculatedValue = system.frequencyHz,
                 unit = "Hz",
-                message =
-                    "Frequency must be greater than zero."
+                message = "Frequency must be greater than zero."
             )
         }
 
@@ -124,17 +119,9 @@ object ProfessionalEngineeringCore {
                 name = "Power factor",
                 status = EngineeringStatus.FAIL,
                 calculatedValue = system.powerFactor,
-                message =
-                    "Power factor must be between 0.01 and 1.00."
+                message = "Power factor must be between 0.01 and 1.00."
             )
         }
-
-        // --------------------------------------------------------
-        // LOAD DATA VALIDATION
-        //
-        // Do NOT silently correct engineering input.
-        // Invalid data must be reported to the user.
-        // --------------------------------------------------------
 
         loads.forEach { load ->
 
@@ -142,8 +129,7 @@ object ProfessionalEngineeringCore {
                 checks += EngineeringCheck(
                     name = "Load name",
                     status = EngineeringStatus.FAIL,
-                    message =
-                        "Load name cannot be empty."
+                    message = "Load name cannot be empty."
                 )
             }
 
@@ -152,9 +138,7 @@ object ProfessionalEngineeringCore {
                     name = "Load quantity: ${load.name}",
                     status = EngineeringStatus.FAIL,
                     calculatedValue = load.quantity,
-                    unit = "",
-                    message =
-                        "Load quantity must be greater than zero."
+                    message = "Load quantity must be greater than zero."
                 )
             }
 
@@ -164,8 +148,7 @@ object ProfessionalEngineeringCore {
                     status = EngineeringStatus.FAIL,
                     calculatedValue = load.unitPowerKW,
                     unit = "kW",
-                    message =
-                        "Unit power must be greater than zero."
+                    message = "Unit power must be greater than zero."
                 )
             }
 
@@ -174,8 +157,7 @@ object ProfessionalEngineeringCore {
                     name = "Demand factor: ${load.name}",
                     status = EngineeringStatus.FAIL,
                     calculatedValue = load.demandFactor,
-                    message =
-                        "Demand factor must be between 0.00 and 1.00."
+                    message = "Demand factor must be between 0.00 and 1.00."
                 )
             }
 
@@ -184,21 +166,12 @@ object ProfessionalEngineeringCore {
                     name = "Power factor: ${load.name}",
                     status = EngineeringStatus.FAIL,
                     calculatedValue = load.powerFactor,
-                    message =
-                        "Power factor must be between 0.01 and 1.00."
+                    message = "Power factor must be between 0.01 and 1.00."
                 )
             }
         }
 
-        // --------------------------------------------------------
-        // STOP ON INVALID DATA
-        // --------------------------------------------------------
-
-        if (
-            checks.any {
-                it.status == EngineeringStatus.FAIL
-            }
-        ) {
+        if (checks.any { it.status == EngineeringStatus.FAIL }) {
             return LoadCalculationResult(
                 connectedKW = 0.0,
                 demandKW = 0.0,
@@ -217,45 +190,36 @@ object ProfessionalEngineeringCore {
             )
         }
 
-        // --------------------------------------------------------
-        // LOAD CALCULATION
-        // --------------------------------------------------------
-
         var connectedKW = 0.0
         var demandKW = 0.0
         var totalReactiveKVAR = 0.0
 
         loads.forEach { load ->
 
-            val connected =
-                load.quantity *
-                        load.unitPowerKW
+            val connectedKWForLoad =
+                load.quantity * load.unitPowerKW
 
-            val demand =
-                connected *
-                        load.demandFactor
+            val demandKWForLoad =
+                connectedKWForLoad * load.demandFactor
 
-            val reactive =
-                demand *
+            val reactiveKVARForLoad =
+                demandKWForLoad *
                         sqrt(
-                            1.0 /
-                                    (
-                                        load.powerFactor *
-                                                load.powerFactor
-                                    ) -
-                                    1.0
+                            (
+                                1.0 /
+                                        (load.powerFactor * load.powerFactor)
+                            ) - 1.0
                         )
 
-            connectedKW += connected
-            demandKW += demand
-            totalReactiveKVAR += reactive
+            connectedKW += connectedKWForLoad
+            demandKW += demandKWForLoad
+            totalReactiveKVAR += reactiveKVARForLoad
         }
 
         val demandKVA =
             sqrt(
                 demandKW * demandKW +
-                        totalReactiveKVAR *
-                        totalReactiveKVAR
+                        totalReactiveKVAR * totalReactiveKVAR
             )
 
         val effectivePF =
@@ -267,7 +231,6 @@ object ProfessionalEngineeringCore {
 
         val currentA =
             when (system.phaseSystem) {
-
                 PhaseSystem.THREE_PHASE ->
                     threePhaseCurrent(
                         demandKVA,
@@ -286,8 +249,7 @@ object ProfessionalEngineeringCore {
             status = EngineeringStatus.PASS,
             calculatedValue = demandKVA,
             unit = "kVA",
-            message =
-                "Load calculation completed."
+            message = "Load calculation completed."
         )
 
         return LoadCalculationResult(
@@ -300,7 +262,11 @@ object ProfessionalEngineeringCore {
             trace = EngineeringTrace(
                 calculationName = "LOAD CALCULATION",
                 standard = null,
-                checks = checks
+                checks = checks,
+                assumptions = listOf(
+                    "Reactive power is calculated from each load power factor.",
+                    "Demand factor is applied to connected active power."
+                )
             )
         )
     }
@@ -314,18 +280,12 @@ object ProfessionalEngineeringCore {
         voltageV: Double
     ): Double {
 
-        if (
-            kva <= 0.0 ||
-            voltageV <= 0.0
-        ) {
+        if (kva <= 0.0 || voltageV <= 0.0) {
             return 0.0
         }
 
         return kva * 1000.0 /
-                (
-                    sqrt(3.0) *
-                            voltageV
-                    )
+                (sqrt(3.0) * voltageV)
     }
 
     fun singlePhaseCurrent(
@@ -333,19 +293,15 @@ object ProfessionalEngineeringCore {
         voltageV: Double
     ): Double {
 
-        if (
-            kva <= 0.0 ||
-            voltageV <= 0.0
-        ) {
+        if (kva <= 0.0 || voltageV <= 0.0) {
             return 0.0
         }
 
-        return kva * 1000.0 /
-                voltageV
+        return kva * 1000.0 / voltageV
     }
 
     // ============================================================
-    // CABLE
+    // CABLE DESIGN
     // ============================================================
 
     data class CableDesignInput(
@@ -418,10 +374,6 @@ object ProfessionalEngineeringCore {
             )
         }
 
-        // --------------------------------------------------------
-        // INPUT VALIDATION
-        // --------------------------------------------------------
-
         if (input.designCurrentA <= 0.0) {
             fail(
                 "Design current",
@@ -472,7 +424,7 @@ object ProfessionalEngineeringCore {
                 "Ambient temperature",
                 null,
                 "°C",
-                "Ambient temperature must be a valid engineering value."
+                "Ambient temperature must be a valid value."
             )
         }
 
@@ -530,11 +482,7 @@ object ProfessionalEngineeringCore {
             )
         }
 
-        if (
-            checks.any {
-                it.status == EngineeringStatus.FAIL
-            }
-        ) {
+        if (checks.any { it.status == EngineeringStatus.FAIL }) {
             return CableDesignResult(
                 status = EngineeringStatus.FAIL,
                 selectedCable = null,
@@ -546,33 +494,34 @@ object ProfessionalEngineeringCore {
                 checks = checks,
                 trace = EngineeringTrace(
                     calculationName = "CABLE DESIGN",
-                    standard =
-                        EngineeringStandards.cableSelection,
+                    standard = EngineeringStandards.cableSelection,
                     checks = checks
                 )
             )
         }
-
-        // --------------------------------------------------------
-        // VERIFIED CABLE DATABASE
-        // --------------------------------------------------------
 
         val cables =
             provider.availableCables(
                 input.conductorMaterial,
                 input.insulation,
                 input.installationMethod
-            ).sortedBy {
-                it.sizeMm2
-            }
+            )
+                .filter {
+                    it.sizeMm2 > 0.0 &&
+                            it.baseAmpacityA > 0.0 &&
+                            it.resistanceOhmPerKm >= 0.0 &&
+                            it.reactanceOhmPerKm >= 0.0
+                }
+                .sortedBy {
+                    it.sizeMm2
+                }
 
         if (cables.isEmpty()) {
 
             val dataCheck =
                 EngineeringCheck(
                     name = "Cable engineering database",
-                    status =
-                        EngineeringStatus.DATA_REQUIRED,
+                    status = EngineeringStatus.DATA_REQUIRED,
                     message =
                         "No verified cable data is available for the selected construction and installation method.",
                     standardCode =
@@ -580,51 +529,39 @@ object ProfessionalEngineeringCore {
                 )
 
             return CableDesignResult(
-                status =
-                    EngineeringStatus.DATA_REQUIRED,
+                status = EngineeringStatus.DATA_REQUIRED,
                 selectedCable = null,
                 parallelRuns = 0,
                 correctedAmpacityPerRunA = 0.0,
                 totalAmpacityA = 0.0,
                 voltageDropV = 0.0,
                 voltageDropPercent = 0.0,
-                checks =
-                    checks + dataCheck,
-                trace =
-                    EngineeringTrace(
-                        calculationName = "CABLE DESIGN",
-                        standard =
-                            EngineeringStandards.cableSelection,
-                        checks =
-                            checks + dataCheck,
-                        warnings =
-                            listOf(
-                                "Verified engineering cable data is required."
-                            )
+                checks = checks + dataCheck,
+                trace = EngineeringTrace(
+                    calculationName = "CABLE DESIGN",
+                    standard = EngineeringStandards.cableSelection,
+                    checks = checks + dataCheck,
+                    warnings = listOf(
+                        "Verified engineering cable data is required."
                     )
+                )
             )
         }
 
-        // --------------------------------------------------------
-        // CORRECTION FACTOR
-        //
-        // The actual correction factors must be supplied by the
-        // engineering data/catalog layer.
-        // --------------------------------------------------------
-
+        /*
+         * Correction factors are explicit engineering inputs.
+         *
+         * Temperature/grouping/construction correction values must
+         * come from the applicable standard/catalog data.
+         *
+         * The core does not invent correction factors.
+         */
         val correctionFactor =
             input.groupingFactor *
                     input.thermalInsulationFactor *
                     input.soilCorrectionFactor
 
-        // --------------------------------------------------------
-        // CABLE SELECTION
-        // --------------------------------------------------------
-
-        for (
-            runs in
-            1..input.maximumParallelRuns
-        ) {
+        for (runs in 1..input.maximumParallelRuns) {
 
             for (cable in cables) {
 
@@ -633,13 +570,9 @@ object ProfessionalEngineeringCore {
                             correctionFactor
 
                 val totalAmpacity =
-                    correctedPerRun *
-                            runs
+                    correctedPerRun * runs
 
-                if (
-                    totalAmpacity <
-                    input.designCurrentA
-                ) {
+                if (totalAmpacity < input.designCurrentA) {
                     continue
                 }
 
@@ -659,9 +592,7 @@ object ProfessionalEngineeringCore {
                             sinPhi
 
                 val dropV =
-                    when (
-                        input.phaseSystem
-                    ) {
+                    when (input.phaseSystem) {
 
                         PhaseSystem.THREE_PHASE ->
                             sqrt(3.0) *
@@ -689,25 +620,18 @@ object ProfessionalEngineeringCore {
                     EngineeringCheck(
                         name = "Cable ampacity",
                         status =
-                            if (
-                                totalAmpacity >=
-                                input.designCurrentA
-                            ) {
+                            if (totalAmpacity >= input.designCurrentA) {
                                 EngineeringStatus.PASS
                             } else {
                                 EngineeringStatus.FAIL
                             },
-                        calculatedValue =
-                            totalAmpacity,
-                        requiredValue =
-                            input.designCurrentA,
+                        calculatedValue = totalAmpacity,
+                        requiredValue = input.designCurrentA,
                         unit = "A",
                         message =
                             "Corrected cable ampacity verification.",
                         standardCode =
-                            EngineeringStandards
-                                .cableSelection
-                                .code,
+                            EngineeringStandards.cableSelection.code,
                         dataSource =
                             "${cable.source} / ${cable.revision}"
                     )
@@ -716,34 +640,24 @@ object ProfessionalEngineeringCore {
                     EngineeringCheck(
                         name = "Voltage drop",
                         status =
-                            if (
-                                dropPercent <=
-                                input.maximumVoltageDropPercent
-                            ) {
+                            if (dropPercent <= input.maximumVoltageDropPercent) {
                                 EngineeringStatus.PASS
                             } else {
                                 EngineeringStatus.FAIL
                             },
-                        calculatedValue =
-                            dropPercent,
-                        requiredValue =
-                            input.maximumVoltageDropPercent,
+                        calculatedValue = dropPercent,
+                        requiredValue = input.maximumVoltageDropPercent,
                         unit = "%",
-                        message =
-                            "Voltage-drop verification.",
+                        message = "Voltage-drop verification.",
                         standardCode =
-                            EngineeringStandards
-                                .cableSelection
-                                .code,
+                            EngineeringStandards.cableSelection.code,
                         dataSource =
                             "${cable.source} / ${cable.revision}"
                     )
 
                 if (
-                    ampacityCheck.status ==
-                    EngineeringStatus.PASS &&
-                    voltageDropCheck.status ==
-                    EngineeringStatus.PASS
+                    ampacityCheck.status == EngineeringStatus.PASS &&
+                    voltageDropCheck.status == EngineeringStatus.PASS
                 ) {
 
                     val resultChecks =
@@ -753,38 +667,24 @@ object ProfessionalEngineeringCore {
                         )
 
                     return CableDesignResult(
-                        status =
-                            EngineeringStatus.PASS,
-                        selectedCable =
-                            cable,
-                        parallelRuns =
-                            runs,
-                        correctedAmpacityPerRunA =
-                            correctedPerRun,
-                        totalAmpacityA =
-                            totalAmpacity,
-                        voltageDropV =
-                            dropV,
-                        voltageDropPercent =
-                            dropPercent,
-                        checks =
-                            resultChecks,
-                        trace =
-                            EngineeringTrace(
-                                calculationName =
-                                    "CABLE DESIGN",
-                                standard =
-                                    EngineeringStandards
-                                        .cableSelection,
-                                checks =
-                                    resultChecks,
-                                assumptions =
-                                    listOf(
-                                        "Correction factors are supplied explicitly.",
-                                        "Cable electrical characteristics are supplied by the engineering data provider.",
-                                        "No generic manufacturer data is invented."
-                                    )
+                        status = EngineeringStatus.PASS,
+                        selectedCable = cable,
+                        parallelRuns = runs,
+                        correctedAmpacityPerRunA = correctedPerRun,
+                        totalAmpacityA = totalAmpacity,
+                        voltageDropV = dropV,
+                        voltageDropPercent = dropPercent,
+                        checks = resultChecks,
+                        trace = EngineeringTrace(
+                            calculationName = "CABLE DESIGN",
+                            standard = EngineeringStandards.cableSelection,
+                            checks = resultChecks,
+                            assumptions = listOf(
+                                "Correction factors are supplied explicitly.",
+                                "Cable electrical characteristics are supplied by the engineering data provider.",
+                                "No generic manufacturer data is invented."
                             )
+                        )
                     )
                 }
             }
@@ -811,16 +711,14 @@ object ProfessionalEngineeringCore {
             checks = listOf(finalCheck),
             trace = EngineeringTrace(
                 calculationName = "CABLE DESIGN",
-                standard =
-                    EngineeringStandards.cableSelection,
-                checks =
-                    listOf(finalCheck)
+                standard = EngineeringStandards.cableSelection,
+                checks = listOf(finalCheck)
             )
         )
     }
 
     // ============================================================
-    // BREAKER
+    // BREAKER DESIGN
     // ============================================================
 
     data class BreakerDesignInput(
@@ -862,22 +760,15 @@ object ProfessionalEngineeringCore {
         provider: BreakerDataProvider
     ): BreakerDesignResult {
 
-        val checks =
-            mutableListOf<EngineeringCheck>()
-
-        // --------------------------------------------------------
-        // INPUT VALIDATION
-        // --------------------------------------------------------
+        val checks = mutableListOf<EngineeringCheck>()
 
         if (input.designCurrentA <= 0.0) {
             checks += EngineeringCheck(
                 name = "Design current",
                 status = EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.designCurrentA,
+                calculatedValue = input.designCurrentA,
                 unit = "A",
-                message =
-                    "Design current must be greater than zero."
+                message = "Design current must be greater than zero."
             )
         }
 
@@ -885,25 +776,19 @@ object ProfessionalEngineeringCore {
             checks += EngineeringCheck(
                 name = "Cable ampacity",
                 status = EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.cableAmpacityA,
+                calculatedValue = input.cableAmpacityA,
                 unit = "A",
-                message =
-                    "Verified cable ampacity is required."
+                message = "Verified cable ampacity is required."
             )
         }
 
-        if (
-            input.prospectiveShortCircuitKA < 0.0
-        ) {
+        if (input.prospectiveShortCircuitKA < 0.0) {
             checks += EngineeringCheck(
                 name = "Short-circuit current",
                 status = EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.prospectiveShortCircuitKA,
+                calculatedValue = input.prospectiveShortCircuitKA,
                 unit = "kA",
-                message =
-                    "Short-circuit current cannot be negative."
+                message = "Short-circuit current cannot be negative."
             )
         }
 
@@ -911,119 +796,82 @@ object ProfessionalEngineeringCore {
             checks += EngineeringCheck(
                 name = "Required poles",
                 status = EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.requiredPoles.toDouble(),
-                message =
-                    "Required poles must be at least one."
+                calculatedValue = input.requiredPoles.toDouble(),
+                message = "Required poles must be at least one."
             )
         }
 
-        if (
-            checks.any {
-                it.status == EngineeringStatus.FAIL
-            }
-        ) {
+        if (checks.any { it.status == EngineeringStatus.FAIL }) {
             return BreakerDesignResult(
                 status = EngineeringStatus.FAIL,
                 selectedBreaker = null,
                 checks = checks,
                 trace = EngineeringTrace(
-                    calculationName =
-                        "BREAKER DESIGN",
-                    standard =
-                        EngineeringStandards
-                            .circuitBreakers,
+                    calculationName = "BREAKER DESIGN",
+                    standard = EngineeringStandards.circuitBreakers,
                     checks = checks
                 )
             )
         }
 
-        // --------------------------------------------------------
-        // VERIFIED BREAKER DATABASE
-        // --------------------------------------------------------
-
         val breakers =
-            provider.availableBreakers(
-                input.requiredPoles
-            ).filter {
-                it.poles >=
-                        input.requiredPoles
-            }.filter {
-                it.ratedCurrentA > 0.0
-            }.filter {
-                it.icuKA > 0.0
-            }.sortedBy {
-                it.ratedCurrentA
-            }
+            provider.availableBreakers(input.requiredPoles)
+                .filter {
+                    it.poles >= input.requiredPoles
+                }
+                .filter {
+                    it.ratedCurrentA > 0.0
+                }
+                .filter {
+                    it.icuKA > 0.0
+                }
+                .sortedBy {
+                    it.ratedCurrentA
+                }
 
         if (breakers.isEmpty()) {
 
             val dataCheck =
                 EngineeringCheck(
-                    name =
-                        "Breaker engineering database",
-                    status =
-                        EngineeringStatus.DATA_REQUIRED,
-                    message =
-                        "No verified breaker product data is available."
+                    name = "Breaker engineering database",
+                    status = EngineeringStatus.DATA_REQUIRED,
+                    message = "No verified breaker product data is available."
                 )
 
             return BreakerDesignResult(
-                status =
-                    EngineeringStatus.DATA_REQUIRED,
+                status = EngineeringStatus.DATA_REQUIRED,
                 selectedBreaker = null,
-                checks =
-                    checks + dataCheck,
-                trace =
-                    EngineeringTrace(
-                        calculationName =
-                            "BREAKER DESIGN",
-                        standard =
-                            EngineeringStandards
-                                .circuitBreakers,
-                        checks =
-                            checks + dataCheck
-                    )
+                checks = checks + dataCheck,
+                trace = EngineeringTrace(
+                    calculationName = "BREAKER DESIGN",
+                    standard = EngineeringStandards.circuitBreakers,
+                    checks = checks + dataCheck
+                )
             )
         }
-
-        // --------------------------------------------------------
-        // BREAKER SELECTION
-        // --------------------------------------------------------
 
         for (breaker in breakers) {
 
             val currentCoordination =
-                input.designCurrentA <=
-                        breaker.ratedCurrentA &&
-                        breaker.ratedCurrentA <=
-                        input.cableAmpacityA
+                input.designCurrentA <= breaker.ratedCurrentA &&
+                        breaker.ratedCurrentA <= input.cableAmpacityA
 
             val breakingCapacity =
-                breaker.icuKA >=
-                        input.prospectiveShortCircuitKA
+                breaker.icuKA >= input.prospectiveShortCircuitKA
 
-            if (
-                currentCoordination &&
-                breakingCapacity
-            ) {
+            if (currentCoordination && breakingCapacity) {
 
                 val currentCheck =
                     EngineeringCheck(
                         name = "Ib ≤ In ≤ Iz",
-                        status =
-                            EngineeringStatus.PASS,
-                        calculatedValue =
-                            breaker.ratedCurrentA,
-                        requiredValue =
-                            input.cableAmpacityA,
+                        status = EngineeringStatus.PASS,
+                        calculatedValue = breaker.ratedCurrentA,
+                        requiredValue = input.cableAmpacityA,
                         unit = "A",
                         message =
                             "Breaker rated current is coordinated with design current and cable ampacity.",
                         standardCode =
-                            EngineeringStandards
-                                .circuitBreakers
-                                .code,
+                            EngineeringStandards.circuitBreakers.code,
                         dataSource =
                             "${breaker.source} / ${breaker.revision}"
                     )
@@ -1031,51 +879,37 @@ object ProfessionalEngineeringCore {
                 val icuCheck =
                     EngineeringCheck(
                         name = "Icu ≥ Ik",
-                        status =
-                            EngineeringStatus.PASS,
-                        calculatedValue =
-                            breaker.icuKA,
-                        requiredValue =
-                            input.prospectiveShortCircuitKA,
+                        status = EngineeringStatus.PASS,
+                        calculatedValue = breaker.icuKA,
+                        requiredValue = input.prospectiveShortCircuitKA,
                         unit = "kA",
                         message =
                             "Breaker ultimate breaking capacity satisfies the specified prospective fault current.",
                         standardCode =
-                            EngineeringStandards
-                                .circuitBreakers
-                                .code,
+                            EngineeringStandards.circuitBreakers.code,
                         dataSource =
                             "${breaker.source} / ${breaker.revision}"
                     )
 
                 return BreakerDesignResult(
-                    status =
-                        EngineeringStatus.PASS,
-                    selectedBreaker =
-                        breaker,
-                    checks =
-                        listOf(
+                    status = EngineeringStatus.PASS,
+                    selectedBreaker = breaker,
+                    checks = listOf(
+                        currentCheck,
+                        icuCheck
+                    ),
+                    trace = EngineeringTrace(
+                        calculationName = "BREAKER DESIGN",
+                        standard = EngineeringStandards.circuitBreakers,
+                        checks = listOf(
                             currentCheck,
                             icuCheck
                         ),
-                    trace =
-                        EngineeringTrace(
-                            calculationName =
-                                "BREAKER DESIGN",
-                            standard =
-                                EngineeringStandards
-                                    .circuitBreakers,
-                            checks =
-                                listOf(
-                                    currentCheck,
-                                    icuCheck
-                                ),
-                            assumptions =
-                                listOf(
-                                    "Protection settings and discrimination are separate verification stages.",
-                                    "Breaker voltage compatibility must be verified from the project system voltage and manufacturer catalog."
-                                )
+                        assumptions = listOf(
+                            "Discrimination/selectivity is a separate study.",
+                            "Breaker voltage compatibility must be verified against the system voltage and manufacturer catalog."
                         )
+                    )
                 )
             }
         }
@@ -1087,31 +921,23 @@ object ProfessionalEngineeringCore {
                 message =
                     "No verified breaker product satisfies the specified current and short-circuit requirements.",
                 standardCode =
-                    EngineeringStandards
-                        .circuitBreakers
-                        .code
+                    EngineeringStandards.circuitBreakers.code
             )
 
         return BreakerDesignResult(
             status = EngineeringStatus.FAIL,
             selectedBreaker = null,
-            checks =
-                listOf(finalCheck),
-            trace =
-                EngineeringTrace(
-                    calculationName =
-                        "BREAKER DESIGN",
-                    standard =
-                        EngineeringStandards
-                            .circuitBreakers,
-                    checks =
-                        listOf(finalCheck)
-                )
+            checks = listOf(finalCheck),
+            trace = EngineeringTrace(
+                calculationName = "BREAKER DESIGN",
+                standard = EngineeringStandards.circuitBreakers,
+                checks = listOf(finalCheck)
+            )
         )
     }
 
     // ============================================================
-    // TRANSFORMER DESIGN
+    // TRANSFORMER
     // ============================================================
 
     data class TransformerData(
@@ -1137,6 +963,119 @@ object ProfessionalEngineeringCore {
         val verified: Boolean
     )
 
+    data class TransformerRequiredKVAResult(
+        val status: EngineeringStatus,
+        val demandKW: Double,
+        val powerFactor: Double,
+        val designMarginPercent: Double,
+        val requiredKVAWithoutMargin: Double,
+        val requiredKVA: Double,
+        val checks: List<EngineeringCheck>,
+        val trace: EngineeringTrace
+    )
+
+    /**
+     * Calculates transformer required capacity.
+     *
+     * Required kVA = Demand kW / PF × (1 + margin)
+     *
+     * This function performs calculation only.
+     * Actual transformer selection is performed by designTransformer()
+     * using verified catalog data.
+     */
+    fun requiredTransformerKVA(
+        demandKW: Double,
+        powerFactor: Double,
+        designMarginPercent: Double = 0.0
+    ): TransformerRequiredKVAResult {
+
+        val checks = mutableListOf<EngineeringCheck>()
+
+        if (demandKW <= 0.0) {
+            checks += EngineeringCheck(
+                name = "Transformer demand",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = demandKW,
+                unit = "kW",
+                message = "Demand power must be greater than zero."
+            )
+        }
+
+        if (powerFactor !in 0.01..1.0) {
+            checks += EngineeringCheck(
+                name = "Transformer power factor",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = powerFactor,
+                message = "Power factor must be between 0.01 and 1.00."
+            )
+        }
+
+        if (designMarginPercent < 0.0) {
+            checks += EngineeringCheck(
+                name = "Transformer design margin",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = designMarginPercent,
+                unit = "%",
+                message = "Design margin cannot be negative."
+            )
+        }
+
+        if (checks.any { it.status == EngineeringStatus.FAIL }) {
+            return TransformerRequiredKVAResult(
+                status = EngineeringStatus.FAIL,
+                demandKW = demandKW,
+                powerFactor = powerFactor,
+                designMarginPercent = designMarginPercent,
+                requiredKVAWithoutMargin = 0.0,
+                requiredKVA = 0.0,
+                checks = checks,
+                trace = EngineeringTrace(
+                    calculationName = "TRANSFORMER REQUIRED KVA",
+                    standard = EngineeringStandards.transformer,
+                    checks = checks
+                )
+            )
+        }
+
+        val requiredKVAWithoutMargin =
+            demandKW / powerFactor
+
+        val requiredKVA =
+            requiredKVAWithoutMargin *
+                    (1.0 + designMarginPercent / 100.0)
+
+        checks += EngineeringCheck(
+            name = "Transformer required kVA",
+            status = EngineeringStatus.PASS,
+            calculatedValue = requiredKVA,
+            unit = "kVA",
+            message =
+                "Required transformer capacity calculated from demand power, power factor and design margin.",
+            standardCode =
+                EngineeringStandards.transformer.code
+        )
+
+        return TransformerRequiredKVAResult(
+            status = EngineeringStatus.PASS,
+            demandKW = demandKW,
+            powerFactor = powerFactor,
+            designMarginPercent = designMarginPercent,
+            requiredKVAWithoutMargin = requiredKVAWithoutMargin,
+            requiredKVA = requiredKVA,
+            checks = checks,
+            trace = EngineeringTrace(
+                calculationName = "TRANSFORMER REQUIRED KVA",
+                standard = EngineeringStandards.transformer,
+                checks = checks,
+                assumptions = listOf(
+                    "Transformer required capacity is calculated from active demand and operating power factor.",
+                    "Design margin is explicitly supplied by the engineer.",
+                    "Actual transformer rating is selected only from verified catalog data."
+                )
+            )
+        )
+    }
+
     data class TransformerDesignInput(
         val requiredKVA: Double,
         val designMarginPercent: Double = 0.0,
@@ -1158,50 +1097,26 @@ object ProfessionalEngineeringCore {
         transformers: List<TransformerData>
     ): TransformerDesignResult {
 
-        val checks =
-            mutableListOf<EngineeringCheck>()
+        val checks = mutableListOf<EngineeringCheck>()
 
         if (input.requiredKVA <= 0.0) {
-
-            val check =
-                EngineeringCheck(
-                    name =
-                        "Required transformer capacity",
-                    status =
-                        EngineeringStatus.FAIL,
-                    calculatedValue =
-                        input.requiredKVA,
-                    unit = "kVA",
-                    message =
-                        "Required transformer capacity must be greater than zero."
-                )
-
-            return TransformerDesignResult(
-                status =
-                    EngineeringStatus.FAIL,
-                selectedTransformer = null,
-                requiredKVA = 0.0,
-                checks = listOf(check),
-                trace =
-                    EngineeringTrace(
-                        calculationName =
-                            "TRANSFORMER DESIGN",
-                        standard = null,
-                        checks = listOf(check)
-                    )
+            checks += EngineeringCheck(
+                name = "Required transformer capacity",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.requiredKVA,
+                unit = "kVA",
+                message =
+                    "Required transformer capacity must be greater than zero."
             )
         }
 
         if (input.designMarginPercent < 0.0) {
-
             checks += EngineeringCheck(
                 name = "Design margin",
                 status = EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.designMarginPercent,
+                calculatedValue = input.designMarginPercent,
                 unit = "%",
-                message =
-                    "Design margin cannot be negative."
+                message = "Design margin cannot be negative."
             )
         }
 
@@ -1212,8 +1127,7 @@ object ProfessionalEngineeringCore {
             checks += EngineeringCheck(
                 name = "Primary voltage",
                 status = EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.requiredPrimaryVoltageV,
+                calculatedValue = input.requiredPrimaryVoltageV,
                 unit = "V",
                 message =
                     "Required primary voltage must be greater than zero."
@@ -1227,8 +1141,7 @@ object ProfessionalEngineeringCore {
             checks += EngineeringCheck(
                 name = "Secondary voltage",
                 status = EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.requiredSecondaryVoltageV,
+                calculatedValue = input.requiredSecondaryVoltageV,
                 unit = "V",
                 message =
                     "Required secondary voltage must be greater than zero."
@@ -1242,69 +1155,54 @@ object ProfessionalEngineeringCore {
             checks += EngineeringCheck(
                 name = "Transformer frequency",
                 status = EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.requiredFrequencyHz,
+                calculatedValue = input.requiredFrequencyHz,
                 unit = "Hz",
                 message =
                     "Required frequency must be greater than zero."
             )
         }
 
-        if (
-            checks.any {
-                it.status == EngineeringStatus.FAIL
-            }
-        ) {
+        if (checks.any { it.status == EngineeringStatus.FAIL }) {
             return TransformerDesignResult(
-                status =
-                    EngineeringStatus.FAIL,
+                status = EngineeringStatus.FAIL,
                 selectedTransformer = null,
                 requiredKVA = 0.0,
                 checks = checks,
-                trace =
-                    EngineeringTrace(
-                        calculationName =
-                            "TRANSFORMER DESIGN",
-                        standard = null,
-                        checks = checks
-                    )
+                trace = EngineeringTrace(
+                    calculationName = "TRANSFORMER DESIGN",
+                    standard = EngineeringStandards.transformer,
+                    checks = checks
+                )
             )
         }
 
         val requiredWithMargin =
             input.requiredKVA *
-                    (
-                        1.0 +
-                                input.designMarginPercent /
-                                100.0
-                        )
+                    (1.0 + input.designMarginPercent / 100.0)
 
         val candidates =
             transformers
+                .filter { it.verified }
                 .filter {
-                    it.verified
-                }
-                .filter {
-                    it.ratedPowerKVA >=
-                            requiredWithMargin
+                    it.ratedPowerKVA >= requiredWithMargin
                 }
                 .filter {
                     input.requiredPrimaryVoltageV == null ||
-                            kotlin.math.abs(
+                            abs(
                                 it.primaryVoltageV -
                                         input.requiredPrimaryVoltageV
                             ) < 0.01
                 }
                 .filter {
                     input.requiredSecondaryVoltageV == null ||
-                            kotlin.math.abs(
+                            abs(
                                 it.secondaryVoltageV -
                                         input.requiredSecondaryVoltageV
                             ) < 0.01
                 }
                 .filter {
                     input.requiredFrequencyHz == null ||
-                            kotlin.math.abs(
+                            abs(
                                 it.frequencyHz -
                                         input.requiredFrequencyHz
                             ) < 0.01
@@ -1317,37 +1215,29 @@ object ProfessionalEngineeringCore {
 
             val dataCheck =
                 EngineeringCheck(
-                    name =
-                        "Transformer engineering database",
-                    status =
-                        EngineeringStatus.DATA_REQUIRED,
-                    requiredValue =
-                        requiredWithMargin,
+                    name = "Transformer engineering database",
+                    status = EngineeringStatus.DATA_REQUIRED,
+                    requiredValue = requiredWithMargin,
                     unit = "kVA",
                     message =
-                        "No verified transformer in the engineering catalog satisfies the required capacity and voltage/frequency constraints."
+                        "No verified transformer in the engineering catalog satisfies the required capacity and voltage/frequency constraints.",
+                    standardCode =
+                        EngineeringStandards.transformer.code
                 )
 
             return TransformerDesignResult(
-                status =
-                    EngineeringStatus.DATA_REQUIRED,
+                status = EngineeringStatus.DATA_REQUIRED,
                 selectedTransformer = null,
-                requiredKVA =
-                    requiredWithMargin,
-                checks =
-                    checks + dataCheck,
-                trace =
-                    EngineeringTrace(
-                        calculationName =
-                            "TRANSFORMER DESIGN",
-                        standard = null,
-                        checks =
-                            checks + dataCheck,
-                        warnings =
-                            listOf(
-                                "A verified manufacturer or project-approved transformer catalog is required."
-                            )
+                requiredKVA = requiredWithMargin,
+                checks = checks + dataCheck,
+                trace = EngineeringTrace(
+                    calculationName = "TRANSFORMER DESIGN",
+                    standard = EngineeringStandards.transformer,
+                    checks = checks + dataCheck,
+                    warnings = listOf(
+                        "A verified manufacturer or project-approved transformer catalog is required."
                     )
+                )
             )
         }
 
@@ -1357,15 +1247,14 @@ object ProfessionalEngineeringCore {
         val capacityCheck =
             EngineeringCheck(
                 name = "Transformer capacity",
-                status =
-                    EngineeringStatus.PASS,
-                calculatedValue =
-                    selected.ratedPowerKVA,
-                requiredValue =
-                    requiredWithMargin,
+                status = EngineeringStatus.PASS,
+                calculatedValue = selected.ratedPowerKVA,
+                requiredValue = requiredWithMargin,
                 unit = "kVA",
                 message =
                     "Selected transformer capacity satisfies the required design capacity.",
+                standardCode =
+                    EngineeringStandards.transformer.code,
                 dataSource =
                     "${selected.manufacturerName} / ${selected.catalogName} / ${selected.catalogRevision}"
             )
@@ -1389,29 +1278,471 @@ object ProfessionalEngineeringCore {
         checks += verificationCheck
 
         return TransformerDesignResult(
-            status =
-                EngineeringStatus.PASS,
-            selectedTransformer =
-                selected,
-            requiredKVA =
-                requiredWithMargin,
-            checks =
-                checks,
-            trace =
-                EngineeringTrace(
-                    calculationName =
-                        "TRANSFORMER DESIGN",
-                    standard = null,
-                    checks =
-                        checks,
-                    assumptions =
-                        listOf(
-                            "Only verified transformer catalog records are eligible.",
-                            "The smallest verified transformer satisfying the design requirement is selected.",
-                            "No hardcoded transformer rating list is used.",
-                            "Manufacturer and catalog information remains external to the calculation formula."
-                        )
+            status = EngineeringStatus.PASS,
+            selectedTransformer = selected,
+            requiredKVA = requiredWithMargin,
+            checks = checks,
+            trace = EngineeringTrace(
+                calculationName = "TRANSFORMER DESIGN",
+                standard = EngineeringStandards.transformer,
+                checks = checks,
+                assumptions = listOf(
+                    "Only verified transformer catalog records are eligible.",
+                    "The smallest verified transformer satisfying the design requirement is selected.",
+                    "No hardcoded transformer rating list is used."
                 )
+            )
+        )
+    }
+
+    // ============================================================
+    // GENERATOR SIZING
+    // ============================================================
+
+    data class GeneratorData(
+        val id: String,
+        val manufacturerId: String,
+        val manufacturerName: String,
+        val catalogId: String,
+        val catalogName: String,
+        val catalogRevision: String,
+        val productFamily: String?,
+        val model: String?,
+        val ratedPowerKVA: Double,
+        val ratedPowerKW: Double?,
+        val ratedVoltageV: Double?,
+        val frequencyHz: Double?,
+        val powerFactor: Double?,
+        val standbyRating: Boolean,
+        val primeRating: Boolean,
+        val shortCircuitDataAvailable: Boolean,
+        val standardCode: String?,
+        val sourceUrl: String?,
+        val verified: Boolean
+    )
+
+    data class GeneratorDesignInput(
+        val demandKW: Double,
+        val powerFactor: Double,
+        val loadingPercent: Double = 80.0,
+        val motorAllowancePercent: Double = 0.0,
+        val designMarginPercent: Double = 0.0,
+        val requiredVoltageV: Double? = null,
+        val requiredFrequencyHz: Double? = null,
+        val requirePrimeRating: Boolean = false,
+        val requireStandbyRating: Boolean = false
+    )
+
+    data class GeneratorDesignResult(
+        val status: EngineeringStatus,
+        val selectedGenerator: GeneratorData?,
+        val baseDemandKVA: Double,
+        val motorAdjustedKVA: Double,
+        val requiredGeneratorKVA: Double,
+        val checks: List<EngineeringCheck>,
+        val trace: EngineeringTrace
+    )
+
+    /**
+     * Generator sizing formula:
+     *
+     * Base kVA = demand kW / PF
+     *
+     * Motor adjusted kVA =
+     * Base kVA × (1 + motor allowance)
+     *
+     * Required generator kVA =
+     * Motor adjusted kVA / allowable loading
+     *
+     * Optional design margin is then applied.
+     *
+     * No manufacturer rating list is hardcoded here.
+     */
+    fun designGenerator(
+        input: GeneratorDesignInput,
+        generators: List<GeneratorData>
+    ): GeneratorDesignResult {
+
+        val checks = mutableListOf<EngineeringCheck>()
+
+        if (input.demandKW <= 0.0) {
+            checks += EngineeringCheck(
+                name = "Generator demand",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.demandKW,
+                unit = "kW",
+                message = "Generator demand must be greater than zero."
+            )
+        }
+
+        if (input.powerFactor !in 0.01..1.0) {
+            checks += EngineeringCheck(
+                name = "Generator power factor",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.powerFactor,
+                message = "Power factor must be between 0.01 and 1.00."
+            )
+        }
+
+        if (
+            input.loadingPercent <= 0.0 ||
+            input.loadingPercent > 100.0
+        ) {
+            checks += EngineeringCheck(
+                name = "Generator loading",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.loadingPercent,
+                unit = "%",
+                message =
+                    "Generator allowable loading must be greater than 0 and not greater than 100%."
+            )
+        }
+
+        if (input.motorAllowancePercent < 0.0) {
+            checks += EngineeringCheck(
+                name = "Motor allowance",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.motorAllowancePercent,
+                unit = "%",
+                message = "Motor allowance cannot be negative."
+            )
+        }
+
+        if (input.designMarginPercent < 0.0) {
+            checks += EngineeringCheck(
+                name = "Generator design margin",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.designMarginPercent,
+                unit = "%",
+                message = "Design margin cannot be negative."
+            )
+        }
+
+        if (
+            input.requiredVoltageV != null &&
+            input.requiredVoltageV <= 0.0
+        ) {
+            checks += EngineeringCheck(
+                name = "Generator voltage",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.requiredVoltageV,
+                unit = "V",
+                message =
+                    "Required generator voltage must be greater than zero."
+            )
+        }
+
+        if (
+            input.requiredFrequencyHz != null &&
+            input.requiredFrequencyHz <= 0.0
+        ) {
+            checks += EngineeringCheck(
+                name = "Generator frequency",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.requiredFrequencyHz,
+                unit = "Hz",
+                message =
+                    "Required generator frequency must be greater than zero."
+            )
+        }
+
+        if (checks.any { it.status == EngineeringStatus.FAIL }) {
+            return GeneratorDesignResult(
+                status = EngineeringStatus.FAIL,
+                selectedGenerator = null,
+                baseDemandKVA = 0.0,
+                motorAdjustedKVA = 0.0,
+                requiredGeneratorKVA = 0.0,
+                checks = checks,
+                trace = EngineeringTrace(
+                    calculationName = "GENERATOR DESIGN",
+                    standard = null,
+                    checks = checks
+                )
+            )
+        }
+
+        val baseDemandKVA =
+            input.demandKW / input.powerFactor
+
+        val motorAdjustedKVA =
+            baseDemandKVA *
+                    (1.0 + input.motorAllowancePercent / 100.0)
+
+        val requiredBeforeMargin =
+            motorAdjustedKVA /
+                    (input.loadingPercent / 100.0)
+
+        val requiredGeneratorKVA =
+            requiredBeforeMargin *
+                    (1.0 + input.designMarginPercent / 100.0)
+
+        checks += EngineeringCheck(
+            name = "Generator required capacity",
+            status = EngineeringStatus.PASS,
+            calculatedValue = requiredGeneratorKVA,
+            unit = "kVA",
+            message =
+                "Generator required capacity calculated from demand, power factor, motor allowance, loading and design margin."
+        )
+
+        val candidates =
+            generators
+                .filter { it.verified }
+                .filter {
+                    it.ratedPowerKVA >= requiredGeneratorKVA
+                }
+                .filter {
+                    input.requiredVoltageV == null ||
+                            it.ratedVoltageV == null ||
+                            abs(
+                                it.ratedVoltageV -
+                                        input.requiredVoltageV
+                            ) < 0.01
+                }
+                .filter {
+                    input.requiredFrequencyHz == null ||
+                            it.frequencyHz == null ||
+                            abs(
+                                it.frequencyHz -
+                                        input.requiredFrequencyHz
+                            ) < 0.01
+                }
+                .filter {
+                    !input.requirePrimeRating ||
+                            it.primeRating
+                }
+                .filter {
+                    !input.requireStandbyRating ||
+                            it.standbyRating
+                }
+                .sortedBy {
+                    it.ratedPowerKVA
+                }
+
+        if (candidates.isEmpty()) {
+
+            val dataCheck =
+                EngineeringCheck(
+                    name = "Generator engineering database",
+                    status = EngineeringStatus.DATA_REQUIRED,
+                    requiredValue = requiredGeneratorKVA,
+                    unit = "kVA",
+                    message =
+                        "No verified generator catalog record satisfies the calculated requirement."
+                )
+
+            return GeneratorDesignResult(
+                status = EngineeringStatus.DATA_REQUIRED,
+                selectedGenerator = null,
+                baseDemandKVA = baseDemandKVA,
+                motorAdjustedKVA = motorAdjustedKVA,
+                requiredGeneratorKVA = requiredGeneratorKVA,
+                checks = checks + dataCheck,
+                trace = EngineeringTrace(
+                    calculationName = "GENERATOR DESIGN",
+                    standard = null,
+                    checks = checks + dataCheck,
+                    warnings = listOf(
+                        "Verified generator manufacturer/catalog data is required."
+                    )
+                )
+            )
+        }
+
+        val selected =
+            candidates.first()
+
+        val capacityCheck =
+            EngineeringCheck(
+                name = "Generator capacity",
+                status = EngineeringStatus.PASS,
+                calculatedValue = selected.ratedPowerKVA,
+                requiredValue = requiredGeneratorKVA,
+                unit = "kVA",
+                message =
+                    "Selected generator rating satisfies the calculated requirement.",
+                dataSource =
+                    "${selected.manufacturerName} / ${selected.catalogName} / ${selected.catalogRevision}"
+            )
+
+        checks += capacityCheck
+
+        return GeneratorDesignResult(
+            status = EngineeringStatus.PASS,
+            selectedGenerator = selected,
+            baseDemandKVA = baseDemandKVA,
+            motorAdjustedKVA = motorAdjustedKVA,
+            requiredGeneratorKVA = requiredGeneratorKVA,
+            checks = checks,
+            trace = EngineeringTrace(
+                calculationName = "GENERATOR DESIGN",
+                standard = null,
+                checks = checks,
+                assumptions = listOf(
+                    "Generator ratings are taken only from verified catalog records.",
+                    "No generic manufacturer rating list is hardcoded.",
+                    "Motor allowance and generator loading are explicit engineering inputs."
+                )
+            )
+        )
+    }
+
+    // ============================================================
+    // CAPACITOR BANK / POWER FACTOR CORRECTION
+    // ============================================================
+
+    data class CapacitorBankInput(
+        val activePowerKW: Double,
+        val existingPowerFactor: Double,
+        val targetPowerFactor: Double
+    )
+
+    data class CapacitorBankResult(
+        val status: EngineeringStatus,
+        val activePowerKW: Double,
+        val existingPowerFactor: Double,
+        val targetPowerFactor: Double,
+        val existingReactivePowerKVAR: Double,
+        val targetReactivePowerKVAR: Double,
+        val requiredCompensationKVAR: Double,
+        val checks: List<EngineeringCheck>,
+        val trace: EngineeringTrace
+    )
+
+    /**
+     * Power-factor correction:
+     *
+     * Qc = P × (tan φ1 - tan φ2)
+     *
+     * where:
+     *
+     * φ1 = acos(existing PF)
+     * φ2 = acos(target PF)
+     *
+     * P is active power in kW.
+     *
+     * Result is the theoretical reactive compensation required in kVAr.
+     *
+     * Actual capacitor bank step selection is a separate equipment
+     * selection stage and must use verified manufacturer/catalog data.
+     */
+    fun calculateCapacitorBank(
+        input: CapacitorBankInput
+    ): CapacitorBankResult {
+
+        val checks = mutableListOf<EngineeringCheck>()
+
+        if (input.activePowerKW <= 0.0) {
+            checks += EngineeringCheck(
+                name = "Active power",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.activePowerKW,
+                unit = "kW",
+                message =
+                    "Active power must be greater than zero."
+            )
+        }
+
+        if (input.existingPowerFactor !in 0.01..1.0) {
+            checks += EngineeringCheck(
+                name = "Existing power factor",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.existingPowerFactor,
+                message =
+                    "Existing power factor must be between 0.01 and 1.00."
+            )
+        }
+
+        if (input.targetPowerFactor !in 0.01..1.0) {
+            checks += EngineeringCheck(
+                name = "Target power factor",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.targetPowerFactor,
+                message =
+                    "Target power factor must be between 0.01 and 1.00."
+            )
+        }
+
+        if (
+            input.existingPowerFactor in 0.01..1.0 &&
+            input.targetPowerFactor in 0.01..1.0 &&
+            input.targetPowerFactor <= input.existingPowerFactor
+        ) {
+            checks += EngineeringCheck(
+                name = "Power factor improvement",
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.targetPowerFactor,
+                requiredValue = input.existingPowerFactor,
+                message =
+                    "Target power factor must be greater than existing power factor."
+            )
+        }
+
+        if (checks.any { it.status == EngineeringStatus.FAIL }) {
+            return CapacitorBankResult(
+                status = EngineeringStatus.FAIL,
+                activePowerKW = input.activePowerKW,
+                existingPowerFactor = input.existingPowerFactor,
+                targetPowerFactor = input.targetPowerFactor,
+                existingReactivePowerKVAR = 0.0,
+                targetReactivePowerKVAR = 0.0,
+                requiredCompensationKVAR = 0.0,
+                checks = checks,
+                trace = EngineeringTrace(
+                    calculationName = "CAPACITOR BANK",
+                    standard = null,
+                    checks = checks
+                )
+            )
+        }
+
+        val phiExisting =
+            acos(input.existingPowerFactor)
+
+        val phiTarget =
+            acos(input.targetPowerFactor)
+
+        val existingReactivePowerKVAR =
+            input.activePowerKW * tan(phiExisting)
+
+        val targetReactivePowerKVAR =
+            input.activePowerKW * tan(phiTarget)
+
+        val requiredCompensationKVAR =
+            (
+                existingReactivePowerKVAR -
+                        targetReactivePowerKVAR
+                ).coerceAtLeast(0.0)
+
+        checks += EngineeringCheck(
+            name = "Required reactive compensation",
+            status = EngineeringStatus.PASS,
+            calculatedValue = requiredCompensationKVAR,
+            unit = "kVAr",
+            message =
+                "Required theoretical reactive compensation calculated."
+        )
+
+        return CapacitorBankResult(
+            status = EngineeringStatus.PASS,
+            activePowerKW = input.activePowerKW,
+            existingPowerFactor = input.existingPowerFactor,
+            targetPowerFactor = input.targetPowerFactor,
+            existingReactivePowerKVAR = existingReactivePowerKVAR,
+            targetReactivePowerKVAR = targetReactivePowerKVAR,
+            requiredCompensationKVAR = requiredCompensationKVAR,
+            checks = checks,
+            trace = EngineeringTrace(
+                calculationName = "CAPACITOR BANK",
+                standard = null,
+                checks = checks,
+                assumptions = listOf(
+                    "Calculation assumes balanced sinusoidal fundamental-frequency conditions.",
+                    "The result is theoretical reactive compensation.",
+                    "Actual capacitor steps, detuning reactors and switching equipment require separate equipment selection."
+                )
+            )
         )
     }
 
@@ -1423,8 +1754,7 @@ object ProfessionalEngineeringCore {
         input: ShortCircuitInput
     ): ShortCircuitResult {
 
-        val checks =
-            mutableListOf<EngineeringCheck>()
+        val checks = mutableListOf<EngineeringCheck>()
 
         if (
             input.faultType !=
@@ -1433,8 +1763,7 @@ object ProfessionalEngineeringCore {
 
             checks += EngineeringCheck(
                 name = "Fault type",
-                status =
-                    EngineeringStatus.DATA_REQUIRED,
+                status = EngineeringStatus.DATA_REQUIRED,
                 message =
                     "The selected fault type is not implemented by the present calculation core."
             )
@@ -1450,8 +1779,7 @@ object ProfessionalEngineeringCore {
             checks += EngineeringCheck(
                 name = "Fault calculation voltage",
                 status = EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.source.voltageV,
+                calculatedValue = input.source.voltageV,
                 unit = "V",
                 message =
                     "Calculation voltage must be greater than zero."
@@ -1466,8 +1794,7 @@ object ProfessionalEngineeringCore {
             checks += EngineeringCheck(
                 name = "Transformer rating",
                 status = EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.source.transformerKVA,
+                calculatedValue = input.source.transformerKVA,
                 unit = "kVA",
                 message =
                     "Transformer rating must be greater than zero."
@@ -1506,28 +1833,19 @@ object ProfessionalEngineeringCore {
             )
         }
 
-        if (
-            checks.any {
-                it.status == EngineeringStatus.FAIL
-            }
-        ) {
+        if (checks.any { it.status == EngineeringStatus.FAIL }) {
 
             return ShortCircuitResult(
-                status =
-                    EngineeringStatus.FAIL,
+                status = EngineeringStatus.FAIL,
                 faultCurrentA = 0.0,
                 faultCurrentKA = 0.0,
                 equivalentImpedance = null,
                 checks = checks,
-                trace =
-                    EngineeringTrace(
-                        calculationName =
-                            "SHORT CIRCUIT",
-                        standard =
-                            EngineeringStandards
-                                .shortCircuit,
-                        checks = checks
-                    )
+                trace = EngineeringTrace(
+                    calculationName = "SHORT CIRCUIT",
+                    standard = EngineeringStandards.shortCircuit,
+                    checks = checks
+                )
             )
         }
 
@@ -1538,8 +1856,8 @@ object ProfessionalEngineeringCore {
          * Transformer %Z or upstream fault current alone gives
          * impedance magnitude only.
          *
-         * It must NOT be used as an artificial R/X split when
-         * downstream cable impedance is being added.
+         * It must not be combined with downstream cable R/X
+         * unless an actual R/X split is available.
          */
 
         val hasDownstreamCable =
@@ -1558,8 +1876,7 @@ object ProfessionalEngineeringCore {
             val dataCheck =
                 EngineeringCheck(
                     name = "Transformer R/X data",
-                    status =
-                        EngineeringStatus.DATA_REQUIRED,
+                    status = EngineeringStatus.DATA_REQUIRED,
                     message =
                         "Transformer %Z alone is insufficient for a downstream complex-impedance calculation. Provide transformer R% and X% or equivalent source R/X data."
                 )
@@ -1582,8 +1899,7 @@ object ProfessionalEngineeringCore {
             val dataCheck =
                 EngineeringCheck(
                     name = "Upstream R/X data",
-                    status =
-                        EngineeringStatus.DATA_REQUIRED,
+                    status = EngineeringStatus.DATA_REQUIRED,
                     message =
                         "Upstream fault current alone gives impedance magnitude. Explicit upstream R/X data is required before adding downstream cable impedance."
                 )
@@ -1604,8 +1920,7 @@ object ProfessionalEngineeringCore {
             val dataCheck =
                 EngineeringCheck(
                     name = "Source impedance data",
-                    status =
-                        EngineeringStatus.DATA_REQUIRED,
+                    status = EngineeringStatus.DATA_REQUIRED,
                     message =
                         "A valid source impedance cannot be determined from the supplied data."
                 )
@@ -1634,30 +1949,22 @@ object ProfessionalEngineeringCore {
                 val fail =
                     EngineeringCheck(
                         name = "Feeder impedance data",
-                        status =
-                            EngineeringStatus.FAIL,
+                        status = EngineeringStatus.FAIL,
                         message =
                             "Cable length, parallel runs, resistance and reactance must contain valid engineering data."
                     )
 
                 return ShortCircuitResult(
-                    status =
-                        EngineeringStatus.FAIL,
+                    status = EngineeringStatus.FAIL,
                     faultCurrentA = 0.0,
                     faultCurrentKA = 0.0,
                     equivalentImpedance = null,
-                    checks =
-                        checks + fail,
-                    trace =
-                        EngineeringTrace(
-                            calculationName =
-                                "SHORT CIRCUIT",
-                            standard =
-                                EngineeringStandards
-                                    .shortCircuit,
-                            checks =
-                                checks + fail
-                        )
+                    checks = checks + fail,
+                    trace = EngineeringTrace(
+                        calculationName = "SHORT CIRCUIT",
+                        standard = EngineeringStandards.shortCircuit,
+                        checks = checks + fail
+                    )
                 )
             }
 
@@ -1678,10 +1985,8 @@ object ProfessionalEngineeringCore {
 
             checks += EngineeringCheck(
                 name = "Feeder resistance",
-                status =
-                    EngineeringStatus.PASS,
-                calculatedValue =
-                    cableR,
+                status = EngineeringStatus.PASS,
+                calculatedValue = cableR,
                 unit = "Ω",
                 message =
                     "Feeder resistance added to equivalent source impedance."
@@ -1689,10 +1994,8 @@ object ProfessionalEngineeringCore {
 
             checks += EngineeringCheck(
                 name = "Feeder reactance",
-                status =
-                    EngineeringStatus.PASS,
-                calculatedValue =
-                    cableX,
+                status = EngineeringStatus.PASS,
+                calculatedValue = cableX,
                 unit = "Ω",
                 message =
                     "Feeder reactance added to equivalent source impedance."
@@ -1710,44 +2013,32 @@ object ProfessionalEngineeringCore {
             val fail =
                 EngineeringCheck(
                     name = "Equivalent impedance",
-                    status =
-                        EngineeringStatus.FAIL,
-                    calculatedValue =
-                        magnitude,
+                    status = EngineeringStatus.FAIL,
+                    calculatedValue = magnitude,
                     unit = "Ω",
                     message =
                         "Equivalent impedance must be greater than zero."
                 )
 
             return ShortCircuitResult(
-                status =
-                    EngineeringStatus.FAIL,
+                status = EngineeringStatus.FAIL,
                 faultCurrentA = 0.0,
                 faultCurrentKA = 0.0,
                 equivalentImpedance = null,
-                checks =
-                    checks + fail,
-                trace =
-                    EngineeringTrace(
-                        calculationName =
-                            "SHORT CIRCUIT",
-                        standard =
-                            EngineeringStandards
-                                .shortCircuit,
-                        checks =
-                            checks + fail
-                    )
+                checks = checks + fail,
+                trace = EngineeringTrace(
+                    calculationName = "SHORT CIRCUIT",
+                    standard = EngineeringStandards.shortCircuit,
+                    checks = checks + fail
+                )
             )
         }
 
         val equivalent =
             ShortCircuitImpedance(
-                resistanceOhm =
-                    totalR,
-                reactanceOhm =
-                    totalX,
-                magnitudeOhm =
-                    magnitude
+                resistanceOhm = totalR,
+                reactanceOhm = totalX,
+                magnitudeOhm = magnitude
             )
 
         val faultCurrentA =
@@ -1762,10 +2053,8 @@ object ProfessionalEngineeringCore {
 
         checks += EngineeringCheck(
             name = "Equivalent impedance",
-            status =
-                EngineeringStatus.PASS,
-            calculatedValue =
-                magnitude,
+            status = EngineeringStatus.PASS,
+            calculatedValue = magnitude,
             unit = "Ω",
             message =
                 "Equivalent positive-sequence impedance magnitude used for the three-phase fault calculation."
@@ -1773,44 +2062,31 @@ object ProfessionalEngineeringCore {
 
         checks += EngineeringCheck(
             name = "Prospective short-circuit current",
-            status =
-                EngineeringStatus.PASS,
-            calculatedValue =
-                faultCurrentKA,
+            status = EngineeringStatus.PASS,
+            calculatedValue = faultCurrentKA,
             unit = "kA",
             message =
                 "Three-phase prospective short-circuit current calculated from supplied source and feeder impedance."
         )
 
         return ShortCircuitResult(
-            status =
-                EngineeringStatus.PASS,
-            faultCurrentA =
-                faultCurrentA,
-            faultCurrentKA =
-                faultCurrentKA,
-            equivalentImpedance =
-                equivalent,
-            checks =
-                checks,
-            trace =
-                EngineeringTrace(
-                    calculationName =
-                        "SHORT CIRCUIT",
-                    standard =
-                        EngineeringStandards
-                            .shortCircuit,
-                    checks =
-                        checks,
-                    assumptions =
-                        listOf(
-                            "Three-phase balanced fault calculation.",
-                            "Ik = V/(sqrt(3) × |Z|).",
-                            "Cable R and X are supplied by engineering data.",
-                            "Parallel identical feeder runs reduce R and X by the number of runs.",
-                            "No transformer R/X split is invented."
-                        )
+            status = EngineeringStatus.PASS,
+            faultCurrentA = faultCurrentA,
+            faultCurrentKA = faultCurrentKA,
+            equivalentImpedance = equivalent,
+            checks = checks,
+            trace = EngineeringTrace(
+                calculationName = "SHORT CIRCUIT",
+                standard = EngineeringStandards.shortCircuit,
+                checks = checks,
+                assumptions = listOf(
+                    "Three-phase balanced fault calculation.",
+                    "Ik = V/(sqrt(3) × |Z|).",
+                    "Cable R and X are supplied by engineering data.",
+                    "Parallel identical feeder runs reduce R and X by the number of runs.",
+                    "No transformer R/X split is invented."
                 )
+            )
         )
     }
 
@@ -1867,8 +2143,6 @@ object ProfessionalEngineeringCore {
 
         // --------------------------------------------------------
         // TRANSFORMER %Z ONLY
-        //
-        // Allowed only for source-bus calculation.
         // --------------------------------------------------------
 
         if (
@@ -1896,6 +2170,14 @@ object ProfessionalEngineeringCore {
                         source.transformerImpedancePercent /
                         100.0
 
+            /*
+             * For a source-bus calculation, %Z gives the impedance
+             * magnitude. We represent it as X-only internally because
+             * no R/X split has been supplied.
+             *
+             * This representation must not be used to pretend that
+             * actual transformer R/X is known downstream.
+             */
             return ShortCircuitImpedance(
                 resistanceOhm = 0.0,
                 reactanceOhm = z,
@@ -1975,48 +2257,38 @@ object ProfessionalEngineeringCore {
     ): ShortCircuitResult {
 
         return ShortCircuitResult(
-            status =
-                EngineeringStatus.DATA_REQUIRED,
+            status = EngineeringStatus.DATA_REQUIRED,
             faultCurrentA = 0.0,
             faultCurrentKA = 0.0,
             equivalentImpedance = null,
             checks = checks,
-            trace =
-                EngineeringTrace(
-                    calculationName =
-                        "SHORT CIRCUIT",
-                    standard =
-                        EngineeringStandards
-                            .shortCircuit,
-                    checks =
-                        checks,
-                    warnings =
-                        listOf(
-                            "Additional source impedance data is required before a professional downstream short-circuit calculation can be completed."
-                        )
+            trace = EngineeringTrace(
+                calculationName = "SHORT CIRCUIT",
+                standard = EngineeringStandards.shortCircuit,
+                checks = checks,
+                warnings = listOf(
+                    "Additional source impedance data is required before a professional downstream short-circuit calculation can be completed."
                 )
+            )
         )
     }
 
     // ============================================================
-    // PROTECTION
+    // PROTECTION CHECK
     // ============================================================
 
     fun checkProtection(
         input: ProtectionCheckInput
     ): ProtectionCheckResult {
 
-        val checks =
-            mutableListOf<EngineeringCheck>()
+        val checks = mutableListOf<EngineeringCheck>()
 
         if (input.designCurrentA <= 0.0) {
 
             checks += EngineeringCheck(
                 name = "Design current Ib",
-                status =
-                    EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.designCurrentA,
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.designCurrentA,
                 unit = "A",
                 message =
                     "Design current must be greater than zero."
@@ -2027,41 +2299,31 @@ object ProfessionalEngineeringCore {
 
             checks += EngineeringCheck(
                 name = "Cable ampacity Iz",
-                status =
-                    EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.cableAmpacityA,
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.cableAmpacityA,
                 unit = "A",
                 message =
                     "Verified cable ampacity is required."
             )
         }
 
-        if (
-            input.breakerRatedCurrentA <= 0.0
-        ) {
+        if (input.breakerRatedCurrentA <= 0.0) {
 
             checks += EngineeringCheck(
                 name = "Breaker rated current In",
-                status =
-                    EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.breakerRatedCurrentA,
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.breakerRatedCurrentA,
                 unit = "A",
                 message =
                     "Breaker rated current must be greater than zero."
             )
         }
 
-        if (
-            input.prospectiveShortCircuitKA < 0.0
-        ) {
+        if (input.prospectiveShortCircuitKA < 0.0) {
 
             checks += EngineeringCheck(
-                name =
-                    "Prospective short-circuit current Ik",
-                status =
-                    EngineeringStatus.FAIL,
+                name = "Prospective short-circuit current Ik",
+                status = EngineeringStatus.FAIL,
                 calculatedValue =
                     input.prospectiveShortCircuitKA,
                 unit = "kA",
@@ -2074,10 +2336,8 @@ object ProfessionalEngineeringCore {
 
             checks += EngineeringCheck(
                 name = "Breaker Icu",
-                status =
-                    EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.breakerIcuKA,
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.breakerIcuKA,
                 unit = "kA",
                 message =
                     "Breaker Icu must be greater than zero."
@@ -2091,67 +2351,60 @@ object ProfessionalEngineeringCore {
 
             checks += EngineeringCheck(
                 name = "Breaker Ics",
-                status =
-                    EngineeringStatus.FAIL,
-                calculatedValue =
-                    input.breakerIcsKA,
+                status = EngineeringStatus.FAIL,
+                calculatedValue = input.breakerIcsKA,
                 unit = "kA",
                 message =
                     "Breaker Ics cannot be negative."
             )
         }
 
-        if (
-            checks.any {
-                it.status == EngineeringStatus.FAIL
-            }
-        ) {
+        if (checks.any { it.status == EngineeringStatus.FAIL }) {
 
             return ProtectionCheckResult(
-                status =
-                    EngineeringStatus.FAIL,
+                status = EngineeringStatus.FAIL,
                 overloadProtectionPass = false,
                 breakingCapacityPass = false,
                 serviceBreakingCapacityPass = null,
                 checks = checks,
-                trace =
-                    EngineeringTrace(
-                        calculationName =
-                            "PROTECTION CHECK",
-                        standard =
-                            EngineeringStandards
-                                .circuitBreakers,
-                        checks = checks
-                    )
+                trace = EngineeringTrace(
+                    calculationName = "PROTECTION CHECK",
+                    standard = EngineeringStandards.circuitBreakers,
+                    checks = checks
+                )
             )
         }
 
-        // --------------------------------------------------------
-        // BASIC CURRENT COORDINATION
-        // --------------------------------------------------------
-
+        /*
+         * Basic coordination:
+         *
+         * Ib ≤ In ≤ Iz
+         */
         val overloadPass =
             input.designCurrentA <=
                     input.breakerRatedCurrentA &&
                     input.breakerRatedCurrentA <=
                     input.cableAmpacityA
 
-        // --------------------------------------------------------
-        // BREAKING CAPACITY
-        // --------------------------------------------------------
-
+        /*
+         * Breaking capacity:
+         *
+         * Icu ≥ Ik
+         */
         val breakingPass =
             input.breakerIcuKA >=
                     input.prospectiveShortCircuitKA
 
-        // --------------------------------------------------------
-        // SERVICE BREAKING CAPACITY
-        // --------------------------------------------------------
-
+        /*
+         * Service breaking capacity:
+         *
+         * Ics ≥ Ik
+         *
+         * only when Ics data is supplied.
+         */
         val servicePass =
             input.breakerIcsKA?.let {
-                it >=
-                        input.prospectiveShortCircuitKA
+                it >= input.prospectiveShortCircuitKA
             }
 
         checks += EngineeringCheck(
@@ -2174,9 +2427,7 @@ object ProfessionalEngineeringCore {
                     "Basic current coordination failed."
                 },
             standardCode =
-                EngineeringStandards
-                    .circuitBreakers
-                    .code
+                EngineeringStandards.circuitBreakers.code
         )
 
         checks += EngineeringCheck(
@@ -2199,9 +2450,7 @@ object ProfessionalEngineeringCore {
                     "Ultimate breaking capacity is insufficient."
                 },
             standardCode =
-                EngineeringStandards
-                    .circuitBreakers
-                    .code
+                EngineeringStandards.circuitBreakers.code
         )
 
         if (input.breakerIcsKA != null) {
@@ -2226,9 +2475,7 @@ object ProfessionalEngineeringCore {
                         "Service breaking capacity is insufficient."
                     },
                 standardCode =
-                    EngineeringStandards
-                        .circuitBreakers
-                        .code
+                    EngineeringStandards.circuitBreakers.code
             )
         }
 
@@ -2253,24 +2500,17 @@ object ProfessionalEngineeringCore {
                 breakingPass,
             serviceBreakingCapacityPass =
                 servicePass,
-            checks =
-                checks,
-            trace =
-                EngineeringTrace(
-                    calculationName =
-                        "PROTECTION CHECK",
-                    standard =
-                        EngineeringStandards
-                            .circuitBreakers,
-                    checks =
-                        checks,
-                    assumptions =
-                        listOf(
-                            "This is a basic protection coordination check.",
-                            "Discrimination/selectivity requires a separate study.",
-                            "Manufacturer data must be verified against the applicable catalog revision."
-                        )
+            checks = checks,
+            trace = EngineeringTrace(
+                calculationName = "PROTECTION CHECK",
+                standard = EngineeringStandards.circuitBreakers,
+                checks = checks,
+                assumptions = listOf(
+                    "This is a basic protection coordination check.",
+                    "Discrimination/selectivity requires a separate study.",
+                    "Manufacturer data must be verified against the applicable catalog revision."
                 )
+            )
         )
     }
 }
