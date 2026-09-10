@@ -11,6 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Color
 
 class MainActivity : ComponentActivity() {
 
@@ -18,20 +19,37 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            MaterialTheme(
-                colorScheme = darkColorScheme(
-                    primary = androidx.compose.ui.graphics.Color(0xFF65D5FF),
-                    secondary = androidx.compose.ui.graphics.Color(0xFF6CE5B1),
-                    surface = androidx.compose.ui.graphics.Color(0xFF111B2E),
-                    background = androidx.compose.ui.graphics.Color(0xFF091321)
-                )
-            ) {
+            ElectricalDesignTheme {
                 Surface {
                     ElectricalDesignApp()
                 }
             }
         }
     }
+}
+
+@Composable
+private fun ElectricalDesignTheme(
+    content: @Composable () -> Unit
+) {
+    MaterialTheme(
+        colorScheme = darkColorScheme(
+            primary = Color(0xFF55D6FF),
+            onPrimary = Color(0xFF002B38),
+            secondary = Color(0xFF68E6B2),
+            onSecondary = Color(0xFF00382A),
+            tertiary = Color(0xFFFFC857),
+            onTertiary = Color(0xFF392900),
+            background = Color(0xFF07111F),
+            onBackground = Color(0xFFE8F1F7),
+            surface = Color(0xFF0D1B2A),
+            onSurface = Color(0xFFE8F1F7),
+            surfaceVariant = Color(0xFF14263A),
+            onSurfaceVariant = Color(0xFFB6C6D4),
+            outline = Color(0xFF30475A)
+        ),
+        content = content
+    )
 }
 
 @Composable
@@ -51,8 +69,20 @@ fun ElectricalDesignApp() {
             )
         }
 
+        "Single Line Diagram" -> {
+            SingleLineDiagramScreen {
+                selectedModule = null
+            }
+        }
+
         "Load Calculation" -> {
             LoadCalculationScreen {
+                selectedModule = null
+            }
+        }
+
+        "Load Schedule" -> {
+            LoadScheduleScreen {
                 selectedModule = null
             }
         }
@@ -101,18 +131,6 @@ fun ElectricalDesignApp() {
 
         "Earthing" -> {
             EarthingScreen {
-                selectedModule = null
-            }
-        }
-
-        "Load Schedule" -> {
-            LoadScheduleScreen {
-                selectedModule = null
-            }
-        }
-
-        "Single Line Diagram" -> {
-            SingleLineDiagramScreen {
                 selectedModule = null
             }
         }
