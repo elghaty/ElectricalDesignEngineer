@@ -5,6 +5,8 @@ import java.util.UUID
 /**
  * DistributionModel
  *
+ * DATA MODEL ONLY.
+ *
  * Electrical distribution hierarchy:
  *
  * Transformer
@@ -20,6 +22,12 @@ import java.util.UUID
  * FINAL_CIRCUIT
  *     ↓
  * LOAD
+ *
+ * IMPORTANT:
+ * - This file contains data structures and hierarchy management only.
+ * - No engineering calculations are performed here.
+ * - All electrical calculations must be performed by
+ *   ProfessionalEngineeringCore.
  *
  * Supported system frequencies:
  * - 50 Hz
@@ -77,6 +85,10 @@ enum class DistributionFrequency(
 
 /**
  * Basic electrical load attached to a distribution node.
+ *
+ * IMPORTANT:
+ * This is a data object only.
+ * Engineering calculations are handled by ProfessionalEngineeringCore.
  */
 data class DistributionLoad(
 
@@ -94,12 +106,12 @@ data class DistributionLoad(
     var unitKW: Double = 0.0,
 
     /**
-     * Power factor.
+     * Power factor input.
      */
     var powerFactor: Double = 0.9,
 
     /**
-     * Demand factor.
+     * Demand factor input.
      */
     var demandFactor: Double = 1.0,
 
@@ -131,35 +143,20 @@ data class DistributionLoad(
     var motorEfficiency: Double = 0.9,
 
     /**
-     * Starting current multiplier.
+     * Starting current multiplier input.
+     *
+     * This is project/load data, not a calculation.
      */
     var startingCurrentMultiplier: Double = 6.0
-) {
-
-    fun connectedKW(): Double {
-        return quantity.coerceAtLeast(0) *
-                unitKW.coerceAtLeast(0.0)
-    }
-
-    fun demandKW(): Double {
-        return connectedKW() *
-                demandFactor.coerceIn(0.0, 1.0)
-    }
-
-    fun demandKVA(): Double {
-        val pf =
-            powerFactor.coerceIn(
-                0.1,
-                1.0
-            )
-
-        return demandKW() / pf
-    }
-}
-
+)
 
 /**
  * Feeder design information.
+ *
+ * This class stores engineering results selected/calculated
+ * by ProfessionalEngineeringCore.
+ *
+ * It does NOT calculate them.
  */
 data class FeederDesign(
 
@@ -203,9 +200,10 @@ data class FeederDesign(
     var breakerSelectedAutomatically: Boolean = true
 )
 
-
 /**
  * Distribution node.
+ *
+ * DATA / HIERARCHY ONLY.
  */
 data class DistributionNode(
 
@@ -238,11 +236,13 @@ data class DistributionNode(
      *
      * Panel:
      * A
+     *
+     * This is stored data only.
      */
     var ratedCapacity: Double = 0.0,
 
     /**
-     * Connected load directly assigned to this node.
+     * Connected loads directly assigned to this node.
      */
     var loads: MutableList<DistributionLoad> =
         mutableListOf(),
@@ -261,26 +261,7 @@ data class DistributionNode(
     fun isRoot(): Boolean {
         return parentId == null
     }
-
-    fun connectedLoadKW(): Double {
-        return loads.sumOf {
-            it.connectedKW()
-        }
-    }
-
-    fun demandLoadKW(): Double {
-        return loads.sumOf {
-            it.demandKW()
-        }
-    }
-
-    fun demandLoadKVA(): Double {
-        return loads.sumOf {
-            it.demandKVA()
-        }
-    }
 }
-
 
 /**
  * Complete distribution system.
@@ -288,6 +269,15 @@ data class DistributionNode(
  * IMPORTANT:
  * `nodes` remains before `frequency` to preserve
  * compatibility with existing positional constructors.
+ *
+ * This class manages:
+ * - hierarchy
+ * - nodes
+ * - relationships
+ * - validation
+ * - SLD structure
+ *
+ * It does NOT perform electrical calculations.
  */
 data class DistributionSystem(
 
@@ -312,14 +302,13 @@ data class DistributionSystem(
 
     /**
      * Frequency in Hz for engineering calculations.
+     *
+     * The actual calculations are performed by
+     * ProfessionalEngineeringCore.
      */
     fun frequencyHz(): Double {
         return frequency.valueHz
     }
-
-    /**
-     * Change system frequency.
-     */
 
     /**
      * Add node to system.
@@ -349,7 +338,6 @@ data class DistributionSystem(
 
         return true
     }
-
 
     /**
      * Remove node and all descendants.
@@ -393,7 +381,6 @@ data class DistributionSystem(
         return true
     }
 
-
     /**
      * Get node by ID.
      */
@@ -406,7 +393,6 @@ data class DistributionSystem(
         }
     }
 
-
     /**
      * Get direct children.
      */
@@ -418,7 +404,6 @@ data class DistributionSystem(
             it.parentId == nodeId
         }
     }
-
 
     /**
      * Get parent.
@@ -436,7 +421,6 @@ data class DistributionSystem(
         }
     }
 
-
     /**
      * Get root transformer.
      */
@@ -450,7 +434,6 @@ data class DistributionSystem(
                     it.parentId == null
         }
     }
-
 
     /**
      * Get complete descendants.
@@ -482,58 +465,11 @@ data class DistributionSystem(
         return result
     }
 
-
-    /**
-     * Calculate total connected load.
-     */
-    fun totalConnectedLoadKW(): Double {
-
-        return nodes
-            .filter {
-
-                it.type ==
-                        DistributionNodeType.LOAD ||
-
-                        it.loads.isNotEmpty()
-            }
-            .sumOf {
-                it.connectedLoadKW()
-            }
-    }
-
-
-    /**
-     * Calculate total demand load.
-     */
-    fun totalDemandLoadKW(): Double {
-
-        return nodes
-            .filter {
-                it.loads.isNotEmpty()
-            }
-            .sumOf {
-                it.demandLoadKW()
-            }
-    }
-
-
-    /**
-     * Calculate total demand kVA.
-     */
-    fun totalDemandLoadKVA(): Double {
-
-        return nodes
-            .filter {
-                it.loads.isNotEmpty()
-            }
-            .sumOf {
-                it.demandLoadKVA()
-            }
-    }
-
-
     /**
      * Validate hierarchy.
+     *
+     * NOTE:
+     * Engineering calculations are intentionally NOT performed here.
      */
     fun validate(): DistributionValidationResult {
 
@@ -542,7 +478,6 @@ data class DistributionSystem(
 
         val warnings =
             mutableListOf<String>()
-
 
         /*
          * Frequency validation.
@@ -556,7 +491,6 @@ data class DistributionSystem(
                 "Unsupported system frequency."
             )
         }
-
 
         /*
          * Transformer check.
@@ -581,7 +515,6 @@ data class DistributionSystem(
             )
         }
 
-
         /*
          * Root check.
          */
@@ -596,7 +529,6 @@ data class DistributionSystem(
                 "More than one root node exists."
             )
         }
-
 
         /*
          * Orphan nodes.
@@ -615,7 +547,6 @@ data class DistributionSystem(
                 )
             }
         }
-
 
         /*
          * Cycle detection.
@@ -651,7 +582,6 @@ data class DistributionSystem(
             }
         }
 
-
         /*
          * Hierarchy validation.
          */
@@ -677,7 +607,6 @@ data class DistributionSystem(
             }
         }
 
-
         return DistributionValidationResult(
 
             isValid =
@@ -691,7 +620,6 @@ data class DistributionSystem(
         )
     }
 
-
     /**
      * Validate parent-child relationship.
      */
@@ -703,13 +631,11 @@ data class DistributionSystem(
         return when (parent) {
 
             DistributionNodeType.TRANSFORMER -> {
-
                 child ==
                         DistributionNodeType.MDB
             }
 
             DistributionNodeType.MDB -> {
-
                 child ==
                         DistributionNodeType.SMDB ||
 
@@ -721,7 +647,6 @@ data class DistributionSystem(
             }
 
             DistributionNodeType.SMDB -> {
-
                 child ==
                         DistributionNodeType.DB ||
 
@@ -733,7 +658,6 @@ data class DistributionSystem(
             }
 
             DistributionNodeType.DB -> {
-
                 child ==
                         DistributionNodeType.SUB_DB ||
 
@@ -745,7 +669,6 @@ data class DistributionSystem(
             }
 
             DistributionNodeType.SUB_DB -> {
-
                 child ==
                         DistributionNodeType.FINAL_CIRCUIT ||
 
@@ -754,18 +677,15 @@ data class DistributionSystem(
             }
 
             DistributionNodeType.FINAL_CIRCUIT -> {
-
                 child ==
                         DistributionNodeType.LOAD
             }
 
             DistributionNodeType.LOAD -> {
-
                 false
             }
         }
     }
-
 
     /**
      * Return nodes in hierarchy order.
@@ -801,7 +721,6 @@ data class DistributionSystem(
     }
 }
 
-
 /**
  * Validation result.
  */
@@ -816,7 +735,6 @@ data class DistributionValidationResult(
         emptyList()
 )
 
-
 /**
  * SLD connection.
  */
@@ -826,7 +744,6 @@ data class SldConnection(
 
     val toNodeId: String
 )
-
 
 /**
  * SLD model.
@@ -840,9 +757,11 @@ data class SldModel(
         List<SldConnection>
 )
 
-
 /**
  * Generate SLD model automatically.
+ *
+ * This class only creates the topology model.
+ * It performs no electrical calculations.
  */
 object SldGenerator {
 
@@ -881,9 +800,11 @@ object SldGenerator {
     }
 }
 
-
 /**
  * Factory for common distribution nodes.
+ *
+ * Factory methods create data objects only.
+ * Engineering calculations remain in ProfessionalEngineeringCore.
  */
 object DistributionNodeFactory {
 
@@ -908,7 +829,6 @@ object DistributionNodeFactory {
         )
     }
 
-
     fun mdb(
         name: String,
         parentId: String,
@@ -928,7 +848,6 @@ object DistributionNodeFactory {
         )
     }
 
-
     fun smdb(
         name: String,
         parentId: String
@@ -946,7 +865,6 @@ object DistributionNodeFactory {
             voltage = 400.0
         )
     }
-
 
     fun db(
         name: String,
@@ -966,7 +884,6 @@ object DistributionNodeFactory {
         )
     }
 
-
     fun subDb(
         name: String,
         parentId: String
@@ -984,7 +901,6 @@ object DistributionNodeFactory {
             voltage = 400.0
         )
     }
-
 
     fun finalCircuit(
         name: String,
@@ -1014,7 +930,6 @@ object DistributionNodeFactory {
                     230.0
         )
     }
-
 
     fun load(
         name: String,
@@ -1073,9 +988,10 @@ object DistributionNodeFactory {
     }
 }
 
-
 /**
  * Example builder.
+ *
+ * Used for testing/demo data only.
  */
 object DistributionExample {
 
@@ -1086,12 +1002,13 @@ object DistributionExample {
 
         val system =
             DistributionSystem(
+
                 name =
                     "Main Electrical Distribution",
+
                 frequency =
                     frequency
             )
-
 
         val transformer =
             DistributionNodeFactory.transformer(
@@ -1104,7 +1021,6 @@ object DistributionExample {
         system.addNode(
             transformer
         )
-
 
         val mdb =
             DistributionNodeFactory.mdb(
@@ -1119,7 +1035,6 @@ object DistributionExample {
             mdb
         )
 
-
         val smdb =
             DistributionNodeFactory.smdb(
 
@@ -1133,7 +1048,6 @@ object DistributionExample {
             smdb
         )
 
-
         val db =
             DistributionNodeFactory.db(
 
@@ -1146,7 +1060,6 @@ object DistributionExample {
         system.addNode(
             db
         )
-
 
         val finalCircuit =
             DistributionNodeFactory.finalCircuit(
@@ -1163,7 +1076,6 @@ object DistributionExample {
         system.addNode(
             finalCircuit
         )
-
 
         val load =
             DistributionNodeFactory.load(
@@ -1188,7 +1100,6 @@ object DistributionExample {
         system.addNode(
             load
         )
-
 
         return system
     }
