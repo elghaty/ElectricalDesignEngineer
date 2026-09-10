@@ -39,30 +39,36 @@ fun ShortCircuitScreen(
 
     val project = ProjectManager.calculation
 
+    /*
+     * IMPORTANT:
+     * The standard transformer data already exists inside
+     * EngineeringCatalogRepository.
+     *
+     * Do NOT create another transformer catalog.
+     */
     val standardTransformers =
         remember {
             EngineeringCatalogRepository
-                .standardTransformerOptions()
-                .sortedBy { it.ratedPowerKVA }
+                .allStandardTransformers()
+                .sortedBy {
+                    it.ratedPowerKVA
+                }
         }
 
     val verifiedTransformers =
         remember {
             EngineeringCatalogRepository
                 .allTransformers()
-                .filter { it.verified }
-                .sortedBy { it.ratedPowerKVA }
+                .filter {
+                    it.verified
+                }
+                .filter {
+                    it.ratedPowerKVA > 0.0
+                }
+                .sortedBy {
+                    it.ratedPowerKVA
+                }
         }
-
-    var transformerSource by remember {
-        mutableStateOf(
-            if (verifiedTransformers.isNotEmpty()) {
-                TransformerSource.VERIFIED_CATALOG
-            } else {
-                TransformerSource.STANDARD_RATING
-            }
-        )
-    }
 
     val requiredKVA =
         when {
@@ -71,21 +77,30 @@ fun ShortCircuitScreen(
 
             project.demandKW > 0.0 ->
                 project.demandKW /
-                    project.powerFactor.coerceIn(
-                        0.01,
-                        1.0
-                    )
+                        project.powerFactor
+                            .coerceIn(0.01, 1.0)
 
             else ->
                 0.0
         }
 
     val recommendedStandard =
-        standardTransformers
-            .firstOrNull {
-                it.ratedPowerKVA >= requiredKVA
-            }
-            ?: standardTransformers.lastOrNull()
+        if (requiredKVA > 0.0) {
+            EngineeringCatalogRepository
+                .recommendedStandardTransformer(
+                    minimumKVA = requiredKVA,
+                    secondaryVoltageV = project.voltageV,
+                    frequencyHz = project.frequencyHz
+                )
+        } else {
+            standardTransformers.firstOrNull()
+        }
+
+    var transformerSource by remember {
+        mutableStateOf(
+            TransformerSource.STANDARD_RATING
+        )
+    }
 
     var selectedStandardTransformer by remember {
         mutableStateOf(
@@ -110,8 +125,7 @@ fun ShortCircuitScreen(
     var nameplateKVA by remember {
         mutableStateOf(
             if (project.transformerKVA > 0.0) {
-                project.transformerKVA
-                    .toString()
+                project.transformerKVA.toString()
             } else {
                 ""
             }
@@ -121,10 +135,9 @@ fun ShortCircuitScreen(
     var nameplateVoltage by remember {
         mutableStateOf(
             if (project.voltageV > 0.0) {
-                project.voltageV
-                    .toString()
+                project.voltageV.toString()
             } else {
-                ""
+                "400"
             }
         )
     }
@@ -132,8 +145,7 @@ fun ShortCircuitScreen(
     var nameplateImpedance by remember {
         mutableStateOf(
             if (
-                project.transformerImpedancePercent >
-                0.0
+                project.transformerImpedancePercent > 0.0
             ) {
                 project.transformerImpedancePercent
                     .toString()
@@ -151,7 +163,21 @@ fun ShortCircuitScreen(
         mutableStateOf(0.0)
     }
 
+    fun parsePositive(
+        value: String
+    ): Double? {
+
+        return value
+            .replace(",", ".")
+            .trim()
+            .toDoubleOrNull()
+            ?.takeIf {
+                it > 0.0
+            }
+    }
+
     fun sourceName(): String {
+
         return when (transformerSource) {
 
             TransformerSource.STANDARD_RATING ->
@@ -165,17 +191,7 @@ fun ShortCircuitScreen(
         }
     }
 
-    fun parsePositive(
-        value: String
-    ): Double? {
-        return value
-            .replace(",", ".")
-            .trim()
-            .toDoubleOrNull()
-            ?.takeIf { it > 0.0 }
-    }
-
-    fun calculate(
+    fun calculateShortCircuit(
         kva: Double,
         voltageV: Double,
         impedancePercent: Double,
@@ -193,10 +209,14 @@ fun ShortCircuitScreen(
                 DATA REQUIRED
 
                 Transformer rating, LV voltage and transformer %Z
-                must all be supplied as positive engineering values.
+                must all be positive engineering values.
 
-                IMPORTANT:
-                Transformer %Z is not assumed by the software.
+                Transformer %Z must come from:
+                • Transformer nameplate
+                • Manufacturer technical documentation
+                • Verified project documentation
+
+                The software does not invent transformer impedance.
                 """.trimIndent()
 
             return
@@ -248,10 +268,10 @@ fun ShortCircuitScreen(
         val calculation =
             ProfessionalEngineeringCore
                 .calculateShortCircuit(
-                    input
+                    input = input
                 )
 
-        val status =
+        val statusText =
             when (calculation.status) {
 
                 EngineeringStatus.PASS ->
@@ -270,9 +290,6 @@ fun ShortCircuitScreen(
                     "NOT CALCULATED"
             }
 
-        val impedance =
-            calculation.equivalentImpedance
-
         resultText =
             buildString {
 
@@ -283,78 +300,92 @@ fun ShortCircuitScreen(
                 appendLine()
 
                 appendLine(
-                    "Source: ${sourceName()}"
+                    "Source: $sourceName()"
                 )
 
                 appendLine()
 
                 appendLine(
-                    "Status: $status"
+                    "Status: $statusText"
                 )
 
                 appendLine()
 
                 appendLine(
                     "Transformer Rating: " +
-                        "%.0f kVA".format(kva)
+                            "%.0f kVA"
+                                .format(kva)
                 )
 
                 appendLine(
                     "LV Voltage: " +
-                        "%.0f V".format(voltageV)
+                            "%.0f V"
+                                .format(voltageV)
                 )
 
                 appendLine(
                     "Transformer %Z: " +
-                        "%.2f %%".format(
-                            impedancePercent
-                        )
+                            "%.2f %%"
+                                .format(
+                                    impedancePercent
+                                )
                 )
 
                 appendLine()
 
                 appendLine(
                     "Transformer Rated Current: " +
-                        "%.2f A".format(
-                            ratedCurrentA
-                        )
+                            "%.2f A"
+                                .format(
+                                    ratedCurrentA
+                                )
                 )
 
                 appendLine()
 
                 appendLine(
                     "Prospective Short Circuit: " +
-                        "%.3f kA".format(
-                            calculation.faultCurrentKA
-                        )
+                            "%.3f kA"
+                                .format(
+                                    calculation
+                                        .faultCurrentKA
+                                )
                 )
 
-                if (impedance != null) {
+                calculation
+                    .equivalentImpedance
+                    ?.let { impedance ->
 
-                    appendLine()
+                        appendLine()
 
-                    appendLine(
-                        "Equivalent Impedance"
-                    )
-
-                    appendLine(
-                        "R = %.6f Ω".format(
-                            impedance.resistanceOhm
+                        appendLine(
+                            "Equivalent Impedance"
                         )
-                    )
 
-                    appendLine(
-                        "X = %.6f Ω".format(
-                            impedance.reactanceOhm
+                        appendLine(
+                            "R = %.6f Ω"
+                                .format(
+                                    impedance
+                                        .resistanceOhm
+                                )
                         )
-                    )
 
-                    appendLine(
-                        "|Z| = %.6f Ω".format(
-                            impedance.magnitudeOhm
+                        appendLine(
+                            "X = %.6f Ω"
+                                .format(
+                                    impedance
+                                        .reactanceOhm
+                                )
                         )
-                    )
-                }
+
+                        appendLine(
+                            "|Z| = %.6f Ω"
+                                .format(
+                                    impedance
+                                        .magnitudeOhm
+                                )
+                        )
+                    }
 
                 appendLine()
 
@@ -374,60 +405,55 @@ fun ShortCircuitScreen(
 
                 } else {
 
-                    calculation.checks.forEach {
-                        check ->
-
-                        appendLine(
-                            "• ${check.name}: " +
-                                "${check.status}"
-                        )
-
-                        if (
-                            check.calculatedValue !=
-                            null
-                        ) {
+                    calculation.checks
+                        .forEach { check ->
 
                             appendLine(
-                                "  Calculated: " +
-                                    "%.4f".format(
-                                        check.calculatedValue
-                                    ) +
-                                    " " +
-                                    check.unit
+                                "• ${check.name}: " +
+                                        "${check.status}"
                             )
-                        }
 
-                        if (
-                            check.requiredValue !=
-                            null
-                        ) {
+                            check.calculatedValue
+                                ?.let { value ->
+
+                                    appendLine(
+                                        "  Calculated: " +
+                                                "%.4f"
+                                                    .format(value) +
+                                                " " +
+                                                check.unit
+                                    )
+                                }
+
+                            check.requiredValue
+                                ?.let { value ->
+
+                                    appendLine(
+                                        "  Required: " +
+                                                "%.4f"
+                                                    .format(value) +
+                                                " " +
+                                                check.unit
+                                    )
+                                }
 
                             appendLine(
-                                "  Required: " +
-                                    "%.4f".format(
-                                        check.requiredValue
-                                    ) +
-                                    " " +
-                                    check.unit
+                                "  ${check.message}"
                             )
                         }
+                }
+
+                calculation.trace
+                    .standard
+                    ?.let { standard ->
+
+                        appendLine()
 
                         appendLine(
-                            "  ${check.message}"
+                            "Standard: " +
+                                    standard.code
                         )
                     }
-                }
-
-                calculation.trace.standard?.let {
-                    standard ->
-
-                    appendLine()
-
-                    appendLine(
-                        "Standard: " +
-                            standard.code
-                    )
-                }
 
                 if (referenceMode) {
 
@@ -438,15 +464,17 @@ fun ShortCircuitScreen(
                     )
 
                     appendLine(
-                        "The transformer rating comes " +
-                            "from the standard transformer " +
-                            "rating table."
+                        "Transformer rating is taken from " +
+                                "the standard transformer rating table."
                     )
 
                     appendLine(
-                        "The transformer %Z entered above " +
-                            "must still come from the actual " +
-                            "nameplate or verified technical data."
+                        "Transformer %Z is NOT assumed by the software."
+                    )
+
+                    appendLine(
+                        "The entered %Z must be verified against " +
+                                "the actual transformer data."
                     )
                 }
 
@@ -466,9 +494,10 @@ fun ShortCircuitScreen(
                     calculation
                         .trace
                         .assumptions
-                        .forEach {
+                        .forEach { assumption ->
+
                             appendLine(
-                                "• $it"
+                                "• $assumption"
                             )
                         }
                 }
@@ -489,9 +518,10 @@ fun ShortCircuitScreen(
                     calculation
                         .trace
                         .warnings
-                        .forEach {
+                        .forEach { warning ->
+
                             appendLine(
-                                "• $it"
+                                "• $warning"
                             )
                         }
                 }
@@ -499,7 +529,7 @@ fun ShortCircuitScreen(
 
         if (
             calculation.status ==
-            EngineeringStatus.PASS
+                    EngineeringStatus.PASS
         ) {
 
             ProjectManager.setShortCircuit(
@@ -522,20 +552,40 @@ fun ShortCircuitScreen(
             Arrangement.spacedBy(10.dp)
     ) {
 
-        Text(
-            text = "Short Circuit Current",
-            style =
-                MaterialTheme
-                    .typography
-                    .headlineSmall
-        )
+        Row(
+            modifier =
+                Modifier.fillMaxWidth(),
+
+            horizontalArrangement =
+                Arrangement.spacedBy(8.dp)
+        ) {
+
+            OutlinedButton(
+                onClick = onBack
+            ) {
+
+                Text(
+                    "Back"
+                )
+            }
+
+            Text(
+                text =
+                    "Short Circuit Current",
+                style =
+                    MaterialTheme
+                        .typography
+                        .headlineSmall
+            )
+        }
 
         Text(
             text =
                 "Project: " +
-                    project.projectName.ifBlank {
-                        "Current Project"
-                    }
+                        project.projectName
+                            .ifBlank {
+                                "Current Project"
+                            }
         )
 
         HorizontalDivider()
@@ -554,14 +604,15 @@ fun ShortCircuitScreen(
                 if (requiredKVA > 0.0) {
 
                     "Project demand: " +
-                        "%.2f kVA".format(
-                            requiredKVA
-                        )
+                            "%.2f kVA"
+                                .format(
+                                    requiredKVA
+                                )
 
                 } else {
 
                     "Project transformer demand " +
-                        "is not available."
+                            "is not available."
                 }
         )
 
@@ -581,11 +632,12 @@ fun ShortCircuitScreen(
                 Modifier.fillMaxWidth(),
 
             horizontalArrangement =
-                Arrangement.spacedBy(8.dp)
+                Arrangement.spacedBy(6.dp)
         ) {
 
             OutlinedButton(
                 onClick = {
+
                     transformerSource =
                         TransformerSource
                             .STANDARD_RATING
@@ -602,6 +654,7 @@ fun ShortCircuitScreen(
 
             OutlinedButton(
                 onClick = {
+
                     transformerSource =
                         TransformerSource
                             .NAMEPLATE
@@ -618,6 +671,7 @@ fun ShortCircuitScreen(
 
             OutlinedButton(
                 onClick = {
+
                     transformerSource =
                         TransformerSource
                             .VERIFIED_CATALOG
@@ -640,7 +694,7 @@ fun ShortCircuitScreen(
         Text(
             text =
                 "Selected source: " +
-                    sourceName(),
+                        sourceName(),
             style =
                 MaterialTheme
                     .typography
@@ -649,9 +703,15 @@ fun ShortCircuitScreen(
 
         HorizontalDivider()
 
+        /*
+         * ========================================================
+         * STANDARD TRANSFORMER
+         * ========================================================
+         */
+
         if (
             transformerSource ==
-            TransformerSource.STANDARD_RATING
+                    TransformerSource.STANDARD_RATING
         ) {
 
             Text(
@@ -668,23 +728,16 @@ fun ShortCircuitScreen(
             ) {
 
                 Text(
-                    "No standard transformer ratings available."
+                    "No standard transformer ratings are available."
                 )
 
             } else {
 
                 TransformerDropdown(
-                    expanded =
-                        standardMenuExpanded,
-
-                    onExpandedChange = {
-                        standardMenuExpanded =
-                            !standardMenuExpanded
-                    },
-
                     title =
                         selectedStandardTransformer
                             ?.let {
+
                                 "%.0f kVA - %.0f V - %.0f Hz"
                                     .format(
                                         it.ratedPowerKVA,
@@ -692,208 +745,155 @@ fun ShortCircuitScreen(
                                         it.frequencyHz
                                     )
                             }
-                            ?: "Select transformer"
+                            ?: "Select transformer",
+
+                    expanded =
+                        standardMenuExpanded,
+
+                    onExpandedChange = {
+
+                        standardMenuExpanded =
+                            !standardMenuExpanded
+                    }
                 ) {
 
-                    standardTransformers.forEach {
-                        transformer ->
+                    standardTransformers
+                        .forEach { transformer ->
 
-                        DropdownMenuItem(
-                            text = {
+                            DropdownMenuItem(
+                                text = {
 
-                                Text(
-                                    "%.0f kVA - %.0f V - %.0f Hz"
+                                    Text(
+                                        "%.0f kVA - %.0f V - %.0f Hz"
+                                            .format(
+                                                transformer
+                                                    .ratedPowerKVA,
+
+                                                transformer
+                                                    .secondaryVoltageV,
+
+                                                transformer
+                                                    .frequencyHz
+                                            )
+                                    )
+                                },
+
+                                onClick = {
+
+                                    selectedStandardTransformer =
+                                        transformer
+
+                                    standardMenuExpanded =
+                                        false
+                                }
+                            )
+                        }
+                }
+
+                selectedStandardTransformer
+                    ?.let { transformer ->
+
+                        Text(
+                            "Selected rating: " +
+                                    "%.0f kVA"
                                         .format(
                                             transformer
-                                                .ratedPowerKVA,
+                                                .ratedPowerKVA
+                                        )
+                        )
 
+                        Text(
+                            "LV voltage: " +
+                                    "%.0f V"
+                                        .format(
                                             transformer
-                                                .secondaryVoltageV,
+                                                .secondaryVoltageV
+                                        )
+                        )
 
+                        Text(
+                            "Frequency: " +
+                                    "%.0f Hz"
+                                        .format(
                                             transformer
                                                 .frequencyHz
                                         )
-                                )
-                            },
+                        )
 
-                            onClick = {
-
-                                selectedStandardTransformer =
-                                    transformer
-
-                                standardMenuExpanded =
-                                    false
-                            }
+                        Text(
+                            "Transformer %Z is required " +
+                                    "from actual transformer data."
                         )
                     }
-                }
 
-                selectedStandardTransformer?.let {
-                    transformer ->
-
-                    Text(
-                        "Selected rating: " +
-                            "%.0f kVA"
-                                .format(
-                                    transformer
-                                        .ratedPowerKVA
-                                )
-                    )
-
-                    Text(
-                        "LV voltage: " +
-                            "%.0f V"
-                                .format(
-                                    transformer
-                                        .secondaryVoltageV
-                                )
-                    )
-
-                    Text(
-                        "Frequency: " +
-                            "%.0f Hz"
-                                .format(
-                                    transformer
-                                        .frequencyHz
-                                )
-                    )
-
-                    Text(
-                        "Transformer %Z must be entered " +
-                            "from actual transformer data."
-                    )
-                }
-            }
-        }
-
-        if (
-            transformerSource ==
-            TransformerSource.VERIFIED_CATALOG
-        ) {
-
-            Text(
-                text =
-                    "Verified Manufacturer Transformer",
-                style =
-                    MaterialTheme
-                        .typography
-                        .titleMedium
-            )
-
-            if (
-                verifiedTransformers.isEmpty()
-            ) {
-
-                Text(
-                    "No verified manufacturer transformer " +
-                        "records are available."
+                Spacer(
+                    modifier =
+                        Modifier.height(4.dp)
                 )
 
-            } else {
+                OutlinedTextField(
+                    value =
+                        nameplateImpedance,
 
-                TransformerDropdown(
-                    expanded =
-                        catalogMenuExpanded,
-
-                    onExpandedChange = {
-                        catalogMenuExpanded =
-                            !catalogMenuExpanded
+                    onValueChange = {
+                        nameplateImpedance =
+                            it
                     },
 
-                    title =
-                        selectedCatalogTransformer
-                            ?.let {
-                                "${it.manufacturerName} - " +
-                                    "${it.ratedPowerKVA.toInt()} kVA"
-                            }
-                            ?: "Select transformer"
-                ) {
-
-                    verifiedTransformers.forEach {
-                        transformer ->
-
-                        DropdownMenuItem(
-                            text = {
-
-                                Text(
-                                    "${transformer.manufacturerName} - " +
-                                        "${transformer.ratedPowerKVA.toInt()} kVA"
-                                )
-                            },
-
-                            onClick = {
-
-                                selectedCatalogTransformer =
-                                    transformer
-
-                                catalogMenuExpanded =
-                                    false
-                            }
+                    label = {
+                        Text(
+                            "Transformer %Z"
                         )
-                    }
-                }
+                    },
 
-                selectedCatalogTransformer?.let {
-                    transformer ->
+                    placeholder = {
+                        Text(
+                            "Example: 6.0"
+                        )
+                    },
 
-                    Text(
-                        "Rating: %.0f kVA"
-                            .format(
-                                transformer
-                                    .ratedPowerKVA
+                    singleLine = true,
+
+                    modifier =
+                        Modifier.fillMaxWidth()
+                )
+
+                Text(
+                    text =
+                        "Do not enter an assumed %Z. " +
+                                "Use the actual transformer nameplate or verified technical data.",
+                    style =
+                        MaterialTheme
+                            .typography
+                            .bodySmall
+                )
+
+                Button(
+                    onClick = {
+
+                        val transformer =
+                            selectedStandardTransformer
+
+                        val z =
+                            parsePositive(
+                                nameplateImpedance
                             )
-                    )
 
-                    Text(
-                        "LV voltage: %.0f V"
-                            .format(
-                                transformer
-                                    .secondaryVoltageV
-                            )
-                    )
+                        if (transformer == null) {
 
-                    Text(
-                        "Frequency: %.0f Hz"
-                            .format(
-                                transformer
-                                    .frequencyHz
-                            )
-                    )
+                            resultText =
+                                "DATA REQUIRED\n\n" +
+                                        "Select a standard transformer rating."
 
-                    Text(
-                        "Transformer %Z: " +
-                            (
-                                transformer
-                                    .impedancePercent
-                                    ?.let {
-                                        "%.2f %%".format(it)
-                                    }
-                                    ?: "DATA REQUIRED"
-                            )
-                    )
+                        } else if (z == null) {
 
-                    Button(
-                        onClick = {
+                            resultText =
+                                "DATA REQUIRED\n\n" +
+                                        "Enter the actual transformer %Z."
 
-                            val z =
-                                transformer
-                                    .impedancePercent
+                        } else {
 
-                            if (
-                                z == null ||
-                                z <= 0.0
-                            ) {
-
-                                resultText =
-                                    "DATA REQUIRED\n\n" +
-                                        "The selected manufacturer " +
-                                        "transformer has no verified " +
-                                        "transformer %Z."
-
-                                return@Button
-                            }
-
-                            calculate(
+                            calculateShortCircuit(
                                 kva =
                                     transformer
                                         .ratedPowerKVA,
@@ -906,114 +906,49 @@ fun ShortCircuitScreen(
                                     z,
 
                                 referenceMode =
-                                    false
+                                    true
                             )
-                        },
+                        }
+                    },
 
-                        modifier =
-                            Modifier.fillMaxWidth()
-                    ) {
+                    modifier =
+                        Modifier.fillMaxWidth()
+                ) {
 
-                        Text(
-                            "Calculate Short Circuit"
-                        )
-                    }
+                    Text(
+                        "Calculate Short Circuit"
+                    )
                 }
             }
         }
 
+        /*
+         * ========================================================
+         * NAMEPLATE
+         * ========================================================
+         */
+
         if (
             transformerSource ==
-            TransformerSource.STANDARD_RATING
+                    TransformerSource.NAMEPLATE
         ) {
 
-            OutlinedTextField(
-                value =
-                    nameplateImpedance,
-
-                onValueChange = {
-                    nameplateImpedance = it
-                },
-
-                label = {
-                    Text(
-                        "Actual Transformer %Z"
-                    )
-                },
-
-                supportingText = {
-                    Text(
-                        "Enter the %Z from transformer nameplate " +
-                            "or verified technical data."
-                    )
-                },
-
-                modifier =
-                    Modifier.fillMaxWidth(),
-
-                singleLine = true
+            Text(
+                text =
+                    "Existing Transformer / Nameplate",
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleMedium
             )
-
-            Button(
-                onClick = {
-
-                    val transformer =
-                        selectedStandardTransformer
-
-                    val z =
-                        parsePositive(
-                            nameplateImpedance
-                        )
-
-                    if (
-                        transformer == null ||
-                        z == null
-                    ) {
-
-                        resultText =
-                            "DATA REQUIRED\n\n" +
-                                "Select transformer rating and " +
-                                "enter actual transformer %Z."
-
-                        return@Button
-                    }
-
-                    calculate(
-                        kva =
-                            transformer.ratedPowerKVA,
-
-                        voltageV =
-                            transformer.secondaryVoltageV,
-
-                        impedancePercent =
-                            z,
-
-                        referenceMode =
-                            true
-                    )
-                },
-
-                modifier =
-                    Modifier.fillMaxWidth()
-            ) {
-
-                Text(
-                    "Calculate Short Circuit"
-                )
-            }
-        }
-
-        if (
-            transformerSource ==
-            TransformerSource.NAMEPLATE
-        ) {
 
             OutlinedTextField(
                 value =
                     nameplateKVA,
 
                 onValueChange = {
-                    nameplateKVA = it
+                    nameplateKVA =
+                        it
                 },
 
                 label = {
@@ -1022,10 +957,10 @@ fun ShortCircuitScreen(
                     )
                 },
 
-                modifier =
-                    Modifier.fillMaxWidth(),
+                singleLine = true,
 
-                singleLine = true
+                modifier =
+                    Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
@@ -1033,7 +968,8 @@ fun ShortCircuitScreen(
                     nameplateVoltage,
 
                 onValueChange = {
-                    nameplateVoltage = it
+                    nameplateVoltage =
+                        it
                 },
 
                 label = {
@@ -1042,10 +978,10 @@ fun ShortCircuitScreen(
                     )
                 },
 
-                modifier =
-                    Modifier.fillMaxWidth(),
+                singleLine = true,
 
-                singleLine = true
+                modifier =
+                    Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
@@ -1053,7 +989,8 @@ fun ShortCircuitScreen(
                     nameplateImpedance,
 
                 onValueChange = {
-                    nameplateImpedance = it
+                    nameplateImpedance =
+                        it
                 },
 
                 label = {
@@ -1062,10 +999,25 @@ fun ShortCircuitScreen(
                     )
                 },
 
-                modifier =
-                    Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(
+                        "Example: 6.0"
+                    )
+                },
 
-                singleLine = true
+                singleLine = true,
+
+                modifier =
+                    Modifier.fillMaxWidth()
+            )
+
+            Text(
+                text =
+                    "All three values must come from the actual transformer data.",
+                style =
+                    MaterialTheme
+                        .typography
+                        .bodySmall
             )
 
             Button(
@@ -1086,26 +1038,38 @@ fun ShortCircuitScreen(
                             nameplateImpedance
                         )
 
-                    if (
-                        kva == null ||
-                        voltage == null ||
-                        z == null
-                    ) {
+                    when {
 
-                        resultText =
-                            "DATA REQUIRED\n\n" +
-                                "Enter transformer kVA, LV voltage " +
-                                "and actual transformer %Z."
+                        kva == null ->
+                            resultText =
+                                "DATA REQUIRED\n\n" +
+                                        "Enter transformer rating."
 
-                        return@Button
+                        voltage == null ->
+                            resultText =
+                                "DATA REQUIRED\n\n" +
+                                        "Enter LV voltage."
+
+                        z == null ->
+                            resultText =
+                                "DATA REQUIRED\n\n" +
+                                        "Enter actual transformer %Z."
+
+                        else ->
+                            calculateShortCircuit(
+                                kva =
+                                    kva,
+
+                                voltageV =
+                                    voltage,
+
+                                impedancePercent =
+                                    z,
+
+                                referenceMode =
+                                    false
+                            )
                     }
-
-                    calculate(
-                        kva = kva,
-                        voltageV = voltage,
-                        impedancePercent = z,
-                        referenceMode = false
-                    )
                 },
 
                 modifier =
@@ -1118,10 +1082,250 @@ fun ShortCircuitScreen(
             }
         }
 
-        Spacer(
-            modifier =
-                Modifier.height(8.dp)
-        )
+        /*
+         * ========================================================
+         * VERIFIED MANUFACTURER
+         * ========================================================
+         */
+
+        if (
+            transformerSource ==
+                    TransformerSource.VERIFIED_CATALOG
+        ) {
+
+            Text(
+                text =
+                    "Verified Manufacturer Transformer",
+                style =
+                    MaterialTheme
+                        .typography
+                        .titleMedium
+            )
+
+            if (
+                verifiedTransformers.isEmpty()
+            ) {
+
+                Text(
+                    "No verified manufacturer transformer records are available."
+                )
+
+            } else {
+
+                TransformerDropdown(
+                    title =
+                        selectedCatalogTransformer
+                            ?.let { transformer ->
+
+                                buildString {
+
+                                    append(
+                                        "%.0f kVA"
+                                            .format(
+                                                transformer
+                                                    .ratedPowerKVA
+                                            )
+                                    )
+
+                                    append(
+                                        " - "
+                                    )
+
+                                    append(
+                                        "%.0f V"
+                                            .format(
+                                                transformer
+                                                    .secondaryVoltageV
+                                            )
+                                    )
+
+                                    append(
+                                        " - "
+                                    )
+
+                                    append(
+                                        transformer
+                                            .manufacturerName
+                                    )
+                                }
+                            }
+                            ?: "Select transformer",
+
+                    expanded =
+                        catalogMenuExpanded,
+
+                    onExpandedChange = {
+
+                        catalogMenuExpanded =
+                            !catalogMenuExpanded
+                    }
+                ) {
+
+                    verifiedTransformers
+                        .forEach { transformer ->
+
+                            DropdownMenuItem(
+                                text = {
+
+                                    Text(
+                                        buildString {
+
+                                            append(
+                                                "%.0f kVA"
+                                                    .format(
+                                                        transformer
+                                                            .ratedPowerKVA
+                                                    )
+                                            )
+
+                                            append(
+                                                " - "
+                                            )
+
+                                            append(
+                                                "%.0f V"
+                                                    .format(
+                                                        transformer
+                                                            .secondaryVoltageV
+                                                    )
+                                            )
+
+                                            append(
+                                                " - "
+                                            )
+
+                                            append(
+                                                transformer
+                                                    .manufacturerName
+                                            )
+                                        }
+                                    )
+                                },
+
+                                onClick = {
+
+                                    selectedCatalogTransformer =
+                                        transformer
+
+                                    catalogMenuExpanded =
+                                        false
+                                }
+                            )
+                        }
+                }
+
+                selectedCatalogTransformer
+                    ?.let { transformer ->
+
+                        Text(
+                            "Manufacturer: " +
+                                    transformer
+                                        .manufacturerName
+                        )
+
+                        Text(
+                            "Product family: " +
+                                    transformer
+                                        .productFamily
+                        )
+
+                        Text(
+                            "Rating: " +
+                                    "%.0f kVA"
+                                        .format(
+                                            transformer
+                                                .ratedPowerKVA
+                                        )
+                        )
+
+                        Text(
+                            "LV voltage: " +
+                                    "%.0f V"
+                                        .format(
+                                            transformer
+                                                .secondaryVoltageV
+                                        )
+                        )
+
+                        Text(
+                            "Frequency: " +
+                                    "%.0f Hz"
+                                        .format(
+                                            transformer
+                                                .frequencyHz
+                                        )
+                        )
+
+                        Text(
+                            "Transformer %Z: " +
+                                    (
+                                        transformer
+                                            .impedancePercent
+                                            ?.let {
+                                                "%.2f %%"
+                                                    .format(it)
+                                            }
+                                            ?: "NOT AVAILABLE"
+                                        )
+                        )
+
+                        Spacer(
+                            modifier =
+                                Modifier.height(4.dp)
+                        )
+
+                        Button(
+                            onClick = {
+
+                                val z =
+                                    transformer
+                                        .impedancePercent
+
+                                if (z == null) {
+
+                                    resultText =
+                                        "DATA REQUIRED\n\n" +
+                                                "The selected manufacturer transformer " +
+                                                "does not contain verified impedance (%Z) data.\n\n" +
+                                                "The software will not invent transformer impedance."
+
+                                } else {
+
+                                    calculateShortCircuit(
+                                        kva =
+                                            transformer
+                                                .ratedPowerKVA,
+
+                                        voltageV =
+                                            transformer
+                                                .secondaryVoltageV,
+
+                                        impedancePercent =
+                                            z,
+
+                                        referenceMode =
+                                            false
+                                    )
+                                }
+                            },
+
+                            modifier =
+                                Modifier.fillMaxWidth()
+                        ) {
+
+                            Text(
+                                "Calculate Short Circuit"
+                            )
+                        }
+                    }
+            }
+        }
+
+        /*
+         * ========================================================
+         * RESULT
+         * ========================================================
+         */
 
         if (
             resultText.isNotBlank()
@@ -1130,27 +1334,18 @@ fun ShortCircuitScreen(
             HorizontalDivider()
 
             Text(
-                text = resultText,
+                text =
+                    "RESULT",
+
                 style =
                     MaterialTheme
                         .typography
-                        .bodyMedium
+                        .titleMedium
             )
-        }
-
-        Spacer(
-            modifier =
-                Modifier.height(16.dp)
-        )
-
-        OutlinedButton(
-            onClick = onBack,
-            modifier =
-                Modifier.fillMaxWidth()
-        ) {
 
             Text(
-                "Back"
+                text =
+                    resultText
             )
         }
     }
@@ -1158,9 +1353,9 @@ fun ShortCircuitScreen(
 
 @Composable
 private fun TransformerDropdown(
+    title: String,
     expanded: Boolean,
     onExpandedChange: () -> Unit,
-    title: String,
     content: @Composable () -> Unit
 ) {
 
@@ -1178,12 +1373,13 @@ private fun TransformerDropdown(
         ) {
 
             Text(
-                title
+                text = title
             )
         }
 
         DropdownMenu(
             expanded = expanded,
+
             onDismissRequest =
                 onExpandedChange
         ) {
