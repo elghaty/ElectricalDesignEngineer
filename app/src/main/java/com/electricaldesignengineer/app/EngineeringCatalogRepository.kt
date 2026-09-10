@@ -26,6 +26,9 @@ package com.electricaldesignengineer.app
  * 5. Correction factors remain explicit engineering inputs.
  * 6. Exact manufacturer part numbers are not invented.
  * 7. Transformer impedance is never invented.
+ * 8. Standard transformer ratings are reference ratings only.
+ * 9. Standard transformer ratings are NOT manufacturer records.
+ * 10. Transformer %Z must come from nameplate or verified data.
  *
  * REFERENCES:
  *
@@ -136,6 +139,227 @@ object EngineeringCatalogRepository {
         val sourceUrl: String?,
         val verified: Boolean
     )
+
+    // ================================================================
+    // STANDARD TRANSFORMER RATINGS
+    // ================================================================
+    //
+    // These are standard/reference transformer ratings used when
+    // no verified manufacturer transformer record is available.
+    //
+    // IMPORTANT:
+    //
+    // This is NOT a manufacturer catalogue.
+    //
+    // This list provides transformer rating options only.
+    //
+    // Transformer impedance (%Z) is intentionally NOT stored here.
+    //
+    // The actual %Z must come from:
+    //
+    // 1. Transformer nameplate
+    // 2. Manufacturer technical documentation
+    // 3. Verified project transformer documentation
+    //
+    // No assumed %Z is used.
+    //
+    // ================================================================
+
+    data class StandardTransformerOption(
+        val id: String,
+        val ratedPowerKVA: Double,
+        val secondaryVoltageV: Double,
+        val frequencyHz: Double,
+        val description: String
+    )
+
+    private val standardTransformerOptions =
+        listOf(
+
+            StandardTransformerOption(
+                id = "STD_TR_025",
+                ratedPowerKVA = 25.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_050",
+                ratedPowerKVA = 50.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_063",
+                ratedPowerKVA = 63.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_100",
+                ratedPowerKVA = 100.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_160",
+                ratedPowerKVA = 160.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_200",
+                ratedPowerKVA = 200.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_250",
+                ratedPowerKVA = 250.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_300",
+                ratedPowerKVA = 300.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_315",
+                ratedPowerKVA = 315.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_400",
+                ratedPowerKVA = 400.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_500",
+                ratedPowerKVA = 500.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_630",
+                ratedPowerKVA = 630.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_800",
+                ratedPowerKVA = 800.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_1000",
+                ratedPowerKVA = 1000.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_1250",
+                ratedPowerKVA = 1250.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_1500",
+                ratedPowerKVA = 1500.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_1600",
+                ratedPowerKVA = 1600.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_2000",
+                ratedPowerKVA = 2000.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_2500",
+                ratedPowerKVA = 2500.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_3000",
+                ratedPowerKVA = 3000.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_3500",
+                ratedPowerKVA = 3500.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_4000",
+                ratedPowerKVA = 4000.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            ),
+
+            StandardTransformerOption(
+                id = "STD_TR_5000",
+                ratedPowerKVA = 5000.0,
+                secondaryVoltageV = 400.0,
+                frequencyHz = 50.0,
+                description = "Standard LV transformer rating"
+            )
+        )
 
     // ================================================================
     // GENERATOR
@@ -732,10 +956,7 @@ object EngineeringCatalogRepository {
             addSchneiderBreaker(
                 current = current,
                 family =
-                    if (current <= 250.0)
-                        "ComPacT NSX${current.toInt()}N"
-                    else
-                        "ComPacT NSX${current.toInt()}N",
+                    "ComPacT NSX${current.toInt()}N",
                 icu = 50.0,
                 source = source
             )
@@ -1492,6 +1713,71 @@ object EngineeringCatalogRepository {
     }
 
     // ================================================================
+    // STANDARD TRANSFORMERS - DIRECT ACCESS
+    // ================================================================
+
+    fun allStandardTransformers():
+            List<StandardTransformerOption> {
+
+        return standardTransformerOptions
+            .sortedBy {
+                it.ratedPowerKVA
+            }
+    }
+
+    fun searchStandardTransformers(
+        minimumKVA: Double? = null,
+        maximumKVA: Double? = null,
+        secondaryVoltageV: Double? = null,
+        frequencyHz: Double? = null
+    ): List<StandardTransformerOption> {
+
+        return standardTransformerOptions
+            .filter {
+                minimumKVA == null ||
+                        it.ratedPowerKVA >= minimumKVA
+            }
+            .filter {
+                maximumKVA == null ||
+                        it.ratedPowerKVA <= maximumKVA
+            }
+            .filter {
+                secondaryVoltageV == null ||
+                        kotlin.math.abs(
+                            it.secondaryVoltageV -
+                                    secondaryVoltageV
+                        ) <= 0.001
+            }
+            .filter {
+                frequencyHz == null ||
+                        kotlin.math.abs(
+                            it.frequencyHz -
+                                    frequencyHz
+                        ) <= 0.001
+            }
+            .sortedBy {
+                it.ratedPowerKVA
+            }
+    }
+
+    fun recommendedStandardTransformer(
+        minimumKVA: Double,
+        secondaryVoltageV: Double = 400.0,
+        frequencyHz: Double = 50.0
+    ): StandardTransformerOption? {
+
+        if (minimumKVA <= 0.0) {
+            return null
+        }
+
+        return searchStandardTransformers(
+            minimumKVA = minimumKVA,
+            secondaryVoltageV = secondaryVoltageV,
+            frequencyHz = frequencyHz
+        ).firstOrNull()
+    }
+
+    // ================================================================
     // SEARCH CABLES
     // ================================================================
 
@@ -2143,5 +2429,8 @@ object EngineeringCatalogRepository {
 
         const val EGYPTIAN_CODE_D19 =
             "D19 - Egyptian Electrical Installation Code"
+
+        const val STANDARD_TRANSFORMER_RATINGS_REFERENCE =
+            "EEHC standard/reference transformer ratings"
     }
 }
