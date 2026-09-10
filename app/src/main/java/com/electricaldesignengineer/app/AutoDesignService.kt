@@ -369,7 +369,12 @@ object AutoDesignService {
             val demandKVA =
                 loadCalculation.demandKVA
 
-            if (demandKVA <= 0.0) {
+            if (
+                demandKVA <= 0.0 ||
+                loadCalculation.checks.any {
+                    it.status == EngineeringStatus.FAIL
+                }
+            ) {
 
                 return SystemResult(
                     system = system,
@@ -645,13 +650,9 @@ object AutoDesignService {
             system =
                 ProfessionalEngineeringCore.SystemInput(
                     voltageV = systemVoltage,
-
-                    frequencyHz =
-                        system.frequencyHz(),
-
+                    frequencyHz = system.frequencyHz(),
                     phaseSystem =
                         ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE,
-
                     powerFactor = 1.0
                 )
         )
@@ -777,11 +778,9 @@ object AutoDesignService {
                 PhaseType.SINGLE_PHASE_L1,
                 PhaseType.SINGLE_PHASE_L2,
                 PhaseType.SINGLE_PHASE_L3 ->
-
                     ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
 
                 PhaseType.THREE_PHASE ->
-
                     ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
             }
 
@@ -804,7 +803,10 @@ object AutoDesignService {
         // --------------------------------------------------------
 
         val powerFactor =
-            determinePowerFactor(node)
+            determinePowerFactor(
+                node = node,
+                frequencyHz = system.frequencyHz()
+            )
 
         if (powerFactor <= 0.0) {
 
@@ -1314,8 +1316,10 @@ object AutoDesignService {
             )
 
         if (
-            loadCalculation.status != EngineeringStatus.PASS ||
-            loadCalculation.currentA <= 0.0
+            loadCalculation.currentA <= 0.0 ||
+            loadCalculation.checks.any {
+                it.status == EngineeringStatus.FAIL
+            }
         ) {
             return 0.0
         }
@@ -1335,7 +1339,8 @@ object AutoDesignService {
     // ============================================================
 
     private fun determinePowerFactor(
-        node: DistributionNode
+        node: DistributionNode,
+        frequencyHz: Double
     ): Double {
 
         if (node.voltage <= 0.0) {
@@ -1376,13 +1381,18 @@ object AutoDesignService {
                 system =
                     ProfessionalEngineeringCore.SystemInput(
                         voltageV = node.voltage,
-                        frequencyHz = 50.0,
+                        frequencyHz = frequencyHz,
                         phaseSystem = phaseSystem,
                         powerFactor = 1.0
                     )
             )
 
-        if (result.status != EngineeringStatus.PASS) {
+        if (
+            result.currentA <= 0.0 ||
+            result.checks.any {
+                it.status == EngineeringStatus.FAIL
+            }
+        ) {
             return 0.0
         }
 
