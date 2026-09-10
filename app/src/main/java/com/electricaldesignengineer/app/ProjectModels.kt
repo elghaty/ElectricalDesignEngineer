@@ -1,99 +1,105 @@
 package com.electricaldesignengineer.app
 
 data class LoadItem(
-    val name: String,
-    val quantity: Double,
-    val powerKW: Double,
-    val demandFactor: Double,
-    val powerFactor: Double
+val name: String,
+val quantity: Double,
+val powerKW: Double,
+val demandFactor: Double,
+val powerFactor: Double
 )
 
 data class ProjectCalculation(
-    val projectName: String = "",
-    val clientName: String = "",
-    val projectLocation: String = "",
-    val engineerName: String = "",
+val projectName: String = "",
+val clientName: String = "",
+val projectLocation: String = "",
+val engineerName: String = "",
 
-    // =========================
-    // SYSTEM DATA
-    // =========================
+// =========================
+// SYSTEM DATA
+// =========================
 
-    val voltageV: Double = 400.0,
-    val frequencyHz: Double = 50.0,
-    val powerFactor: Double = 0.90,
-    val isThreePhase: Boolean = true,
+val voltageV: Double = 400.0,
+val frequencyHz: Double = 50.0,
+val powerFactor: Double = 0.90,
+val isThreePhase: Boolean = true,
 
-    // =========================
-    // LOAD CALCULATION
-    // =========================
+// =========================
+// LOAD CALCULATION
+// =========================
 
-    val connectedKW: Double = 0.0,
-    val demandKW: Double = 0.0,
-    val totalKVA: Double = 0.0,
-    val designCurrentA: Double = 0.0,
+val connectedKW: Double = 0.0,
+val demandKW: Double = 0.0,
+val totalKVA: Double = 0.0,
+val designCurrentA: Double = 0.0,
 
-    // =========================
-    // CABLE
-    // =========================
+// =========================
+// CABLE
+// =========================
 
-    val cableSizeMm2: Double = 0.0,
-    val cableAmpacityA: Double = 0.0,
-    val cableLengthM: Double = 0.0,
-    val voltageDropV: Double = 0.0,
-    val voltageDropPercent: Double = 0.0,
+val cableSizeMm2: Double = 0.0,
+val cableAmpacityA: Double = 0.0,
+val cableLengthM: Double = 0.0,
+val voltageDropV: Double = 0.0,
+val voltageDropPercent: Double = 0.0,
 
-    // =========================
-    // SHORT CIRCUIT
-    // =========================
+// =========================
+// SHORT CIRCUIT
+// =========================
 
-    val shortCircuitKA: Double = 0.0,
+val shortCircuitKA: Double = 0.0,
 
-    // =========================
-    // BREAKER
-    // =========================
+// =========================
+// BREAKER
+// =========================
 
-    val breakerRatingA: Int = 0,
-    val breakerIcuKA: Double = 0.0,
+val breakerRatingA: Int = 0,
+val breakerIcuKA: Double = 0.0,
 
-    // =========================
-    // TRANSFORMER
-    // =========================
+// =========================
+// TRANSFORMER
+// =========================
 
-    val transformerKVA: Double = 0.0,
+val transformerKVA: Double = 0.0,
 
-    /**
-     * Transformer percentage impedance.
-     *
-     * Final engineering value must come from
-     * the transformer manufacturer's nameplate
-     * or verified technical data.
-     */
-    val transformerImpedancePercent: Double = 6.0,
+/**
+ * Transformer percentage impedance.
+ *
+ * The value must come from the transformer
+ * manufacturer's nameplate or verified
+ * technical/catalog data.
+ *
+ * 0.0 means that the impedance value has
+ * not yet been supplied or verified.
+ *
+ * No assumed value is used.
+ */
+val transformerImpedancePercent: Double = 0.0,
 
-    // =========================
-    // GENERATOR
-    // =========================
+// =========================
+// GENERATOR
+// =========================
 
-    val generatorKVA: Double = 0.0,
+val generatorKVA: Double = 0.0,
 
-    // =========================
-    // POWER FACTOR CORRECTION
-    // =========================
+// =========================
+// POWER FACTOR CORRECTION
+// =========================
 
-    val capacitorKVAR: Double = 0.0,
+val capacitorKVAR: Double = 0.0,
 
-    // =========================
-    // EARTHING
-    // =========================
+// =========================
+// EARTHING
+// =========================
 
-    val earthResistanceOhm: Double = 0.0,
-    val earthFaultCurrentA: Double = 0.0,
-    val earthPotentialRiseV: Double = 0.0,
-    val maximumEarthResistanceOhm: Double = 0.0,
+val earthResistanceOhm: Double = 0.0,
+val earthFaultCurrentA: Double = 0.0,
+val earthPotentialRiseV: Double = 0.0,
+val maximumEarthResistanceOhm: Double = 0.0,
 
-    // =========================
-    // DESIGN STATUS
-    // =========================
+// =========================
+// DESIGN STATUS
+// =========================
 
-    val designStatus: String = "NOT STARTED"
+val designStatus: String = "NOT STARTED"
+
 )
