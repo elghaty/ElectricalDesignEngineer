@@ -229,7 +229,7 @@ import kotlin.math.tan
                      (
                          1.0 /
                                  (load.powerFactor * load.powerFactor)
-                     ) - 1.0
+                         ) - 1.0
                  )
 
      connectedKW += connectedKWForLoad
@@ -286,7 +286,8 @@ import kotlin.math.tan
          checks = checks,
          assumptions = listOf(
              "Reactive power is calculated from each load power factor.",
-             "Demand factor is applied to connected active power."
+             "Demand factor is applied to connected active power.",
+             "The individual load power factors are used to calculate total reactive power."
          )
      )
  )
@@ -343,7 +344,36 @@ import kotlin.math.tan
   val thermalInsulationFactor: Double,
   val soilCorrectionFactor: Double,
   val maximumVoltageDropPercent: Double,
-  val maximumParallelRuns: Int = 8
+  val maximumParallelRuns: Int = 8,
+  
+   /*
+  * These two factors are optional so all existing callers
+  * remain source-compatible.
+  *
+  * They must be supplied from the applicable cable standard
+  * / manufacturer data when temperature or loaded-conductor
+  * corrections are required.
+  *
+  * Default = 1.0 preserves the previous behavior.
+  */
+ val ambientTemperatureCorrectionFactor: Double = 1.0,
+ val loadedConductorsCorrectionFactor: Double = 1.0,
+
+ /*
+  * Optional short-circuit thermal verification.
+  *
+  * If both shortCircuitCurrentKA and shortCircuitDurationS
+  * are supplied, and adiabaticK is supplied, the core performs
+  * the adiabatic thermal withstand check:
+  *
+  *     I²t <= (kS)²
+  *
+  * No generic k value is invented.
+  */
+ val shortCircuitCurrentKA: Double? = null,
+ val shortCircuitDurationS: Double = 1.0,
+ val adiabaticK: Double? = null
+  
   )
   
   data class CableData(
@@ -444,12 +474,14 @@ import kotlin.math.tan
      )
  }
 
- if (input.ambientTemperatureC.isNaN()) {
+ if (input.ambientTemperatureC.isNaN() ||
+     input.ambientTemperatureC.isInfinite()
+ ) {
      fail(
          "Ambient temperature",
          null,
          "°C",
-         "Ambient temperature must be a valid value."
+         "Ambient temperature must be a valid finite value."
      )
  }
 
@@ -507,6 +539,75 @@ import kotlin.math.tan
      )
  }
 
+ if (
+     input.ambientTemperatureCorrectionFactor <= 0.0 ||
+     input.ambientTemperatureCorrectionFactor > 1.0
+ ) {
+     fail(
+         "Ambient temperature correction factor",
+         input.ambientTemperatureCorrectionFactor,
+         "",
+         "Ambient temperature correction factor must be greater than 0 and not greater than 1."
+     )
+ }
+
+ if (
+     input.loadedConductorsCorrectionFactor <= 0.0 ||
+     input.loadedConductorsCorrectionFactor > 1.0
+ ) {
+     fail(
+         "Loaded conductors correction factor",
+         input.loadedConductorsCorrectionFactor,
+         "",
+         "Loaded-conductor correction factor must be greater than 0 and not greater than 1."
+     )
+ }
+
+ if (
+     input.shortCircuitCurrentKA != null &&
+     (
+         input.shortCircuitCurrentKA <= 0.0 ||
+                 input.shortCircuitCurrentKA.isNaN() ||
+                 input.shortCircuitCurrentKA.isInfinite()
+         )
+ ) {
+     fail(
+         "Short-circuit current",
+         input.shortCircuitCurrentKA,
+         "kA",
+         "Short-circuit current must be greater than zero."
+     )
+ }
+
+ if (
+     input.shortCircuitCurrentKA != null &&
+     (
+         input.shortCircuitDurationS <= 0.0 ||
+                 input.shortCircuitDurationS.isNaN() ||
+                 input.shortCircuitDurationS.isInfinite()
+         )
+ ) {
+     fail(
+         "Short-circuit duration",
+         input.shortCircuitDurationS,
+         "s",
+         "Short-circuit duration must be greater than zero."
+     )
+ }
+
+ if (
+     input.shortCircuitCurrentKA != null &&
+     input.adiabaticK != null &&
+     input.adiabaticK <= 0.0
+ ) {
+     fail(
+         "Adiabatic k factor",
+         input.adiabaticK,
+         "",
+         "Adiabatic k factor must be greater than zero."
+     )
+ }
+
  if (checks.any { it.status == EngineeringStatus.FAIL }) {
      return CableDesignResult(
          status = EngineeringStatus.FAIL,
@@ -535,7 +636,9 @@ import kotlin.math.tan
              it.sizeMm2 > 0.0 &&
                      it.baseAmpacityA > 0.0 &&
                      it.resistanceOhmPerKm >= 0.0 &&
-                     it.reactanceOhmPerKm >= 0.0
+                     it.reactanceOhmPerKm >= 0.0 &&
+                     it.source.isNotBlank() &&
+                     it.revision.isNotBlank()
          }
          .sortedBy {
              it.sizeMm2
@@ -574,17 +677,42 @@ import kotlin.math.tan
  }
 
  /*
-  * Correction factors are explicit engineering inputs.
+  * The correction factors are deliberately explicit.
   *
-  * Temperature/grouping/construction correction values must
-  * come from the applicable standard/catalog data.
+  * Overall correction:
   *
-  * The core does not invent correction factors.
+  * K =
+  * grouping × thermal insulation × soil
+  * × ambient-temperature correction
+  * × loaded-conductor correction
+  *
+  * The core does not invent temperature or conductor-count
+  * correction values. Those values must come from the applicable
+  * standard / manufacturer data.
   */
  val correctionFactor =
      input.groupingFactor *
              input.thermalInsulationFactor *
-             input.soilCorrectionFactor
+             input.soilCorrectionFactor *
+             input.ambientTemperatureCorrectionFactor *
+             input.loadedConductorsCorrectionFactor
+
+ /*
+  * When the caller has not supplied explicit temperature/load
+  * conductor correction factors, keep the calculation backward
+  * compatible but expose the engineering limitation in trace.
+  */
+ val correctionWarnings = mutableListOf<String>()
+
+ if (input.ambientTemperatureCorrectionFactor == 1.0) {
+     correctionWarnings +=
+         "Ambient-temperature correction factor is 1.0. Verify the applicable standard table for the specified ambient temperature of ${input.ambientTemperatureC} °C."
+ }
+
+ if (input.loadedConductorsCorrectionFactor == 1.0) {
+     correctionWarnings +=
+         "Loaded-conductor correction factor is 1.0. Verify the applicable standard table for ${input.numberOfLoadedConductors} loaded conductors."
+ }
 
  for (runs in 1..input.maximumParallelRuns) {
 
@@ -607,7 +735,7 @@ import kotlin.math.tan
                      1.0 -
                              input.powerFactor *
                              input.powerFactor
-                 ).coerceAtLeast(0.0)
+                     ).coerceAtLeast(0.0)
              )
 
          val impedanceComponent =
@@ -640,6 +768,66 @@ import kotlin.math.tan
              dropV /
                      input.voltageV *
                      100.0
+
+         /*
+          * Optional adiabatic short-circuit check.
+          *
+          * I²t <= (kS)²
+          *
+          * For parallel identical runs the fault current is
+          * divided between the runs, so each run is checked
+          * against I_fault / runs.
+          */
+         val thermalCheck: EngineeringCheck?
+
+         if (
+             input.shortCircuitCurrentKA != null &&
+             input.adiabaticK != null
+         ) {
+
+             val faultCurrentPerRunA =
+                 input.shortCircuitCurrentKA * 1000.0 / runs
+
+             val requiredConductorAreaMm2 =
+                 faultCurrentPerRunA *
+                         sqrt(input.shortCircuitDurationS) /
+                         input.adiabaticK
+
+             val thermalPass =
+                 cable.sizeMm2 >= requiredConductorAreaMm2
+
+             thermalCheck =
+                 EngineeringCheck(
+                     name = "Short-circuit thermal withstand",
+                     status =
+                         if (thermalPass) {
+                             EngineeringStatus.PASS
+                         } else {
+                             EngineeringStatus.FAIL
+                         },
+                     calculatedValue = cable.sizeMm2,
+                     requiredValue = requiredConductorAreaMm2,
+                     unit = "mm²",
+                     message =
+                         if (thermalPass) {
+                             "Cable conductor cross-section satisfies the adiabatic short-circuit thermal criterion."
+                         } else {
+                             "Cable conductor cross-section does not satisfy the adiabatic short-circuit thermal criterion."
+                         },
+                     standardCode =
+                         EngineeringStandards.cableSelection.code,
+                     dataSource =
+                         "${cable.source} / ${cable.revision}"
+                 )
+
+             if (!thermalPass) {
+                 continue
+             }
+
+         } else {
+
+             thermalCheck = null
+         }
 
          val ampacityCheck =
              EngineeringCheck(
@@ -686,10 +874,13 @@ import kotlin.math.tan
          ) {
 
              val resultChecks =
-                 listOf(
-                     ampacityCheck,
-                     voltageDropCheck
-                 )
+                 buildList {
+                     add(ampacityCheck)
+                     add(voltageDropCheck)
+                     if (thermalCheck != null) {
+                         add(thermalCheck)
+                     }
+                 }
 
              return CableDesignResult(
                  status = EngineeringStatus.PASS,
@@ -704,10 +895,15 @@ import kotlin.math.tan
                      calculationName = "CABLE DESIGN",
                      standard = EngineeringStandards.cableSelection,
                      checks = resultChecks,
+                     warnings = correctionWarnings,
                      assumptions = listOf(
                          "Correction factors are supplied explicitly.",
+                         "Ambient temperature correction must be obtained from the applicable standard/catalog data.",
+                         "Loaded-conductor correction must be obtained from the applicable standard/catalog data.",
                          "Cable electrical characteristics are supplied by the engineering data provider.",
-                         "No generic manufacturer data is invented."
+                         "Voltage drop is calculated using conductor resistance and reactance.",
+                         "Parallel identical runs divide the calculated feeder impedance contribution.",
+                         "Short-circuit thermal verification is performed only when short-circuit current, duration and verified adiabatic k factor are supplied."
                      )
                  )
              )
@@ -737,7 +933,8 @@ import kotlin.math.tan
      trace = EngineeringTrace(
          calculationName = "CABLE DESIGN",
          standard = EngineeringStandards.cableSelection,
-         checks = listOf(finalCheck)
+         checks = listOf(finalCheck),
+         warnings = correctionWarnings
      )
  )
   
@@ -751,7 +948,19 @@ import kotlin.math.tan
   val designCurrentA: Double,
   val cableAmpacityA: Double,
   val prospectiveShortCircuitKA: Double,
-  val requiredPoles: Int
+  val requiredPoles: Int,
+  
+   /*
+  * Optional system voltage.
+  *
+  * Existing callers remain compatible because the default
+  * value is null.
+  *
+  * When supplied, breaker rated voltage is checked against
+  * the actual system voltage.
+  */
+ val systemVoltageV: Double? = null
+  
   )
   
   data class BreakerData(
@@ -809,13 +1018,33 @@ import kotlin.math.tan
      )
  }
 
- if (input.prospectiveShortCircuitKA < 0.0) {
+ /*
+  * A zero fault level is not acceptable for professional
+  * breaker selection because Icu cannot be verified against
+  * a real prospective fault level.
+  */
+ if (input.prospectiveShortCircuitKA <= 0.0) {
      checks += EngineeringCheck(
          name = "Short-circuit current",
          status = EngineeringStatus.FAIL,
          calculatedValue = input.prospectiveShortCircuitKA,
          unit = "kA",
-         message = "Short-circuit current cannot be negative."
+         message =
+             "Prospective short-circuit current must be greater than zero."
+     )
+ }
+
+ if (
+     input.prospectiveShortCircuitKA.isNaN() ||
+     input.prospectiveShortCircuitKA.isInfinite()
+ ) {
+     checks += EngineeringCheck(
+         name = "Short-circuit current validity",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.prospectiveShortCircuitKA,
+         unit = "kA",
+         message =
+             "Prospective short-circuit current must be a finite engineering value."
      )
  }
 
@@ -825,6 +1054,24 @@ import kotlin.math.tan
          status = EngineeringStatus.FAIL,
          calculatedValue = input.requiredPoles.toDouble(),
          message = "Required poles must be at least one."
+     )
+ }
+
+ if (
+     input.systemVoltageV != null &&
+     (
+         input.systemVoltageV <= 0.0 ||
+                 input.systemVoltageV.isNaN() ||
+                 input.systemVoltageV.isInfinite()
+         )
+ ) {
+     checks += EngineeringCheck(
+         name = "System voltage",
+         status = EngineeringStatus.FAIL,
+         calculatedValue = input.systemVoltageV,
+         unit = "V",
+         message =
+             "System voltage must be a valid value greater than zero."
      )
  }
 
@@ -850,7 +1097,14 @@ import kotlin.math.tan
              it.ratedCurrentA > 0.0
          }
          .filter {
+             it.ratedVoltageV > 0.0
+         }
+         .filter {
              it.icuKA > 0.0
+         }
+         .filter {
+             it.source.isNotBlank() &&
+                     it.revision.isNotBlank()
          }
          .sortedBy {
              it.ratedCurrentA
@@ -862,7 +1116,8 @@ import kotlin.math.tan
          EngineeringCheck(
              name = "Breaker engineering database",
              status = EngineeringStatus.DATA_REQUIRED,
-             message = "No verified breaker product data is available."
+             message =
+                 "No verified breaker product data is available."
          )
 
      return BreakerDesignResult(
@@ -886,7 +1141,26 @@ import kotlin.math.tan
      val breakingCapacity =
          breaker.icuKA >= input.prospectiveShortCircuitKA
 
-     if (currentCoordination && breakingCapacity) {
+     /*
+      * Voltage compatibility is checked when the calling layer
+      * provides system voltage.
+      *
+      * The check is intentionally not invented when the old
+      * caller does not provide system voltage.
+      */
+     val voltageCompatibility =
+         input.systemVoltageV?.let {
+             breaker.ratedVoltageV >= it
+         }
+
+     if (
+         currentCoordination &&
+         breakingCapacity &&
+         (
+             voltageCompatibility == null ||
+                     voltageCompatibility
+             )
+     ) {
 
          val currentCheck =
              EngineeringCheck(
@@ -918,23 +1192,51 @@ import kotlin.math.tan
                      "${breaker.source} / ${breaker.revision}"
              )
 
+         val resultChecks = mutableListOf(
+             currentCheck,
+             icuCheck
+         )
+
+         if (input.systemVoltageV != null) {
+
+             resultChecks += EngineeringCheck(
+                 name = "Breaker rated voltage",
+                 status =
+                     if (voltageCompatibility == true) {
+                         EngineeringStatus.PASS
+                     } else {
+                         EngineeringStatus.FAIL
+                     },
+                 calculatedValue = breaker.ratedVoltageV,
+                 requiredValue = input.systemVoltageV,
+                 unit = "V",
+                 message =
+                     if (voltageCompatibility == true) {
+                         "Breaker rated voltage is compatible with the specified system voltage."
+                     } else {
+                         "Breaker rated voltage is below the specified system voltage."
+                     },
+                 standardCode =
+                     EngineeringStandards.circuitBreakers.code,
+                 dataSource =
+                     "${breaker.source} / ${breaker.revision}"
+             )
+         }
+
          return BreakerDesignResult(
              status = EngineeringStatus.PASS,
              selectedBreaker = breaker,
-             checks = listOf(
-                 currentCheck,
-                 icuCheck
-             ),
+             checks = resultChecks,
              trace = EngineeringTrace(
                  calculationName = "BREAKER DESIGN",
                  standard = EngineeringStandards.circuitBreakers,
-                 checks = listOf(
-                     currentCheck,
-                     icuCheck
-                 ),
+                 checks = resultChecks,
                  assumptions = listOf(
+                     "Basic current coordination: Ib ≤ In ≤ Iz.",
+                     "Ultimate breaking capacity: Icu ≥ Ik.",
+                     "When system voltage is supplied, breaker rated voltage is checked against it.",
                      "Discrimination/selectivity is a separate study.",
-                     "Breaker voltage compatibility must be verified against the system voltage and manufacturer catalog."
+                     "Breaker catalog data must be verified against the applicable manufacturer revision."
                  )
              )
          )
@@ -946,7 +1248,7 @@ import kotlin.math.tan
          name = "Breaker selection",
          status = EngineeringStatus.FAIL,
          message =
-             "No verified breaker product satisfies the specified current and short-circuit requirements.",
+             "No verified breaker product satisfies the specified current, voltage and short-circuit requirements.",
          standardCode =
              EngineeringStandards.circuitBreakers.code
      )
@@ -1013,6 +1315,8 @@ import kotlin.math.tan
   * 
   
   * This function performs calculation only.
+  
+  * 
   
   * Actual transformer selection is performed by designTransformer()
   
@@ -1219,7 +1523,13 @@ import kotlin.math.tan
      transformers
          .filter { it.verified }
          .filter {
-             it.ratedPowerKVA >= requiredWithMargin
+             it.ratedPowerKVA > 0.0 &&
+                     it.ratedPowerKVA >= requiredWithMargin
+         }
+         .filter {
+             it.primaryVoltageV > 0.0 &&
+                     it.secondaryVoltageV > 0.0 &&
+                     it.frequencyHz > 0.0
          }
          .filter {
              input.requiredPrimaryVoltageV == null ||
@@ -1535,39 +1845,50 @@ import kotlin.math.tan
     "Generator required capacity calculated from demand, power factor, motor allowance, loading and design margin."
     )
     
-    val candidates =
-    generators
-    .filter { it.verified }
-    .filter {
-    it.ratedPowerKVA >= requiredGeneratorKVA
-    }
-    .filter {
-    input.requiredVoltageV == null ||
-    it.ratedVoltageV == null ||
-    abs(
-    it.ratedVoltageV -
-    input.requiredVoltageV
-    ) < 0.01
-    }
-    .filter {
-    input.requiredFrequencyHz == null ||
-    it.frequencyHz == null ||
-    abs(
-    it.frequencyHz -
-    input.requiredFrequencyHz
-    ) < 0.01
-    }
-    .filter {
-    !input.requirePrimeRating ||
-    it.primeRating
-    }
-    .filter {
-    !input.requireStandbyRating ||
-    it.standbyRating
-    }
-    .sortedBy {
-    it.ratedPowerKVA
-    }
+    /*
+    
+    * Voltage/frequency are now strict requirements when supplied.
+    * 
+    * A missing catalog value is NOT treated as a match.
+      */
+      val candidates =
+      generators
+      .filter { it.verified }
+      .filter {
+      it.ratedPowerKVA > 0.0 &&
+      it.ratedPowerKVA >= requiredGeneratorKVA
+      }
+      .filter {
+      input.requiredVoltageV == null ||
+      (
+      it.ratedVoltageV != null &&
+      abs(
+      it.ratedVoltageV -
+      input.requiredVoltageV
+      ) < 0.01
+      )
+      }
+      .filter {
+      input.requiredFrequencyHz == null ||
+      (
+      it.frequencyHz != null &&
+      abs(
+      it.frequencyHz -
+      input.requiredFrequencyHz
+      ) < 0.01
+      )
+      }
+      .filter {
+      !input.requirePrimeRating ||
+      it.primeRating
+      }
+      .filter {
+      !input.requireStandbyRating ||
+      it.standbyRating
+      }
+      .sortedBy {
+      it.ratedPowerKVA
+      }
     
     if (candidates.isEmpty()) {
     
@@ -1578,7 +1899,7 @@ import kotlin.math.tan
          requiredValue = requiredGeneratorKVA,
          unit = "kVA",
          message =
-             "No verified generator catalog record satisfies the calculated requirement."
+             "No verified generator catalog record satisfies the calculated requirement and all specified voltage/frequency/rating constraints."
      )
 
  return GeneratorDesignResult(
@@ -1593,7 +1914,8 @@ import kotlin.math.tan
          standard = null,
          checks = checks + dataCheck,
          warnings = listOf(
-             "Verified generator manufacturer/catalog data is required."
+             "Verified generator manufacturer/catalog data is required.",
+             "A specified voltage or frequency cannot be accepted when the catalog record does not contain that value."
          )
      )
  )
@@ -1618,6 +1940,34 @@ import kotlin.math.tan
     
     checks += capacityCheck
     
+    if (input.requiredVoltageV != null) {
+    checks += EngineeringCheck(
+    name = "Generator rated voltage",
+    status = EngineeringStatus.PASS,
+    calculatedValue = selected.ratedVoltageV,
+    requiredValue = input.requiredVoltageV,
+    unit = "V",
+    message =
+    "Generator rated voltage matches the specified requirement.",
+    dataSource =
+    "${selected.manufacturerName} / ${selected.catalogName}"
+    )
+    }
+    
+    if (input.requiredFrequencyHz != null) {
+    checks += EngineeringCheck(
+    name = "Generator frequency",
+    status = EngineeringStatus.PASS,
+    calculatedValue = selected.frequencyHz,
+    requiredValue = input.requiredFrequencyHz,
+    unit = "Hz",
+    message =
+    "Generator frequency matches the specified requirement.",
+    dataSource =
+    "${selected.manufacturerName} / ${selected.catalogName}"
+    )
+    }
+    
     return GeneratorDesignResult(
     status = EngineeringStatus.PASS,
     selectedGenerator = selected,
@@ -1632,7 +1982,8 @@ import kotlin.math.tan
     assumptions = listOf(
     "Generator ratings are taken only from verified catalog records.",
     "No generic manufacturer rating list is hardcoded.",
-    "Motor allowance and generator loading are explicit engineering inputs."
+    "Motor allowance and generator loading are explicit engineering inputs.",
+    "When voltage or frequency is specified, the corresponding catalog value must be present and compatible."
     )
     )
     )
@@ -1837,15 +2188,7 @@ import kotlin.math.tan
   
   * 
   
-  * Earth Potential Rise:
-  
-  * 
-  
   * EPR = Rearth × Ifault
-  
-  * 
-  
-  * Maximum permissible earth resistance:
   
   * 
   
@@ -1853,7 +2196,7 @@ import kotlin.math.tan
   
   * 
   
-  * Acceptance criterion:
+  * Acceptance:
   
   * 
   
@@ -1861,29 +2204,7 @@ import kotlin.math.tan
   
   * 
   
-  * This preserves the calculation used by the legacy
-  
-  * ElectricalCalculator.earthCheck() implementation.
-  
-  * 
-  
-  * IMPORTANT
-  
-  * ---
-  
-  * This function verifies the supplied earth resistance against
-  
-  * the supplied permissible touch voltage and fault current.
-  
-  * 
-  
-  * It does not invent an earth resistance value and does not
-  
-  * replace the complete earthing-system design, touch/step
-  
-  * voltage study, soil model, electrode design, or applicable
-  
-  * protection/disconnection study.
+  * This function verifies supplied values only.
     */
     fun calculateEarthing(
     input: EarthingInput
@@ -1947,35 +2268,17 @@ import kotlin.math.tan
     
     }
     
-    /*
+    val earthPotentialRiseV =
+    input.earthResistanceOhm *
+    input.faultCurrentA
     
-    * Legacy engineering calculation preserved exactly:
-    * 
-    * EPR = R × I
-      */
-      val earthPotentialRiseV =
-      input.earthResistanceOhm *
-      input.faultCurrentA
+    val maximumResistanceOhm =
+    input.permissibleTouchVoltageV /
+    input.faultCurrentA
     
-    /*
-    
-    * Maximum permissible earth resistance:
-    * 
-    * Rmax = Vtouch / Ifault
-      */
-      val maximumResistanceOhm =
-      input.permissibleTouchVoltageV /
-      input.faultCurrentA
-    
-    /*
-    
-    * Acceptance:
-    * 
-    * Rearth ≤ Rmax
-      */
-      val resistancePass =
-      input.earthResistanceOhm <=
-      maximumResistanceOhm
+    val resistancePass =
+    input.earthResistanceOhm <=
+    maximumResistanceOhm
     
     val resistanceCheck =
     EngineeringCheck(
@@ -2149,17 +2452,13 @@ import kotlin.math.tan
  val cable =
      input.cable
 
- /*
-  * Transformer %Z or upstream fault current alone gives
-  * impedance magnitude only.
-  *
-  * It must not be combined with downstream cable R/X
-  * unless an actual R/X split is available.
-  */
-
  val hasDownstreamCable =
      cable != null
 
+ /*
+  * Transformer %Z alone cannot be combined with a downstream
+  * R/X feeder because %Z gives magnitude only.
+  */
  if (
      hasDownstreamCable &&
      input.source.transformerKVA != null &&
@@ -2338,6 +2637,17 @@ import kotlin.math.tan
          magnitudeOhm = magnitude
      )
 
+ /*
+  * Present calculation:
+  *
+  * Ik = V / (sqrt(3) × |Z|)
+  *
+  * This remains the established calculation path for
+  * compatibility with the existing ShortCircuitResult API.
+  *
+  * Full IEC 60909 maximum/minimum voltage-factor treatment
+  * requires additional input fields in ShortCircuitInput.
+  */
  val faultCurrentA =
      input.source.voltageV /
              (
@@ -2381,7 +2691,9 @@ import kotlin.math.tan
              "Ik = V/(sqrt(3) × |Z|).",
              "Cable R and X are supplied by engineering data.",
              "Parallel identical feeder runs reduce R and X by the number of runs.",
-             "No transformer R/X split is invented."
+             "No transformer R/X split is invented.",
+             "Voltage-factor maximum/minimum cases require the corresponding input data and are not invented by this core.",
+             "This calculation is not a complete unbalanced-fault or protection study."
          )
      )
  )
@@ -2428,14 +2740,20 @@ import kotlin.math.tan
                  source.transformerReactancePercent /
                  100.0
 
+     val magnitude =
+         sqrt(
+             r * r +
+                     x * x
+         )
+
+     if (magnitude <= 0.0) {
+         return null
+     }
+
      return ShortCircuitImpedance(
          resistanceOhm = r,
          reactanceOhm = x,
-         magnitudeOhm =
-             sqrt(
-                 r * r +
-                         x * x
-             )
+         magnitudeOhm = magnitude
      )
  }
 
@@ -2468,13 +2786,17 @@ import kotlin.math.tan
                  source.transformerImpedancePercent /
                  100.0
 
+     if (z <= 0.0) {
+         return null
+     }
+
      /*
-      * For a source-bus calculation, %Z gives the impedance
-      * magnitude. We represent it as X-only internally because
-      * no R/X split has been supplied.
+      * %Z gives impedance magnitude only.
       *
-      * This representation must not be used to pretend that
-      * actual transformer R/X is known downstream.
+      * It is represented as X-only internally solely for
+      * source-bus calculation compatibility.
+      *
+      * It is NOT treated as known transformer R/X data.
       */
      return ShortCircuitImpedance(
          resistanceOhm = 0.0,
@@ -2505,14 +2827,20 @@ import kotlin.math.tan
      val x =
          source.upstreamReactanceOhm
 
+     val magnitude =
+         sqrt(
+             r * r +
+                     x * x
+         )
+
+     if (magnitude <= 0.0) {
+         return null
+     }
+
      return ShortCircuitImpedance(
          resistanceOhm = r,
          reactanceOhm = x,
-         magnitudeOhm =
-             sqrt(
-                 r * r +
-                         x * x
-             )
+         magnitudeOhm = magnitude
      )
  }
 
@@ -2538,6 +2866,10 @@ import kotlin.math.tan
                              ikA *
                              1000.0
                      )
+
+     if (z <= 0.0) {
+         return null
+     }
 
      return ShortCircuitImpedance(
          resistanceOhm = 0.0,
@@ -2619,7 +2951,11 @@ import kotlin.math.tan
      )
  }
 
- if (input.prospectiveShortCircuitKA < 0.0) {
+ /*
+  * Zero prospective fault current is not acceptable for
+  * professional breaking-capacity verification.
+  */
+ if (input.prospectiveShortCircuitKA <= 0.0) {
 
      checks += EngineeringCheck(
          name = "Prospective short-circuit current Ik",
@@ -2628,7 +2964,23 @@ import kotlin.math.tan
              input.prospectiveShortCircuitKA,
          unit = "kA",
          message =
-             "Prospective short-circuit current cannot be negative."
+             "Prospective short-circuit current must be greater than zero."
+     )
+ }
+
+ if (
+     input.prospectiveShortCircuitKA.isNaN() ||
+     input.prospectiveShortCircuitKA.isInfinite()
+ ) {
+
+     checks += EngineeringCheck(
+         name = "Prospective short-circuit current validity",
+         status = EngineeringStatus.FAIL,
+         calculatedValue =
+             input.prospectiveShortCircuitKA,
+         unit = "kA",
+         message =
+             "Prospective short-circuit current must be a finite engineering value."
      )
  }
 
@@ -2646,7 +2998,7 @@ import kotlin.math.tan
 
  if (
      input.breakerIcsKA != null &&
-     input.breakerIcsKA < 0.0
+     input.breakerIcsKA <= 0.0
  ) {
 
      checks += EngineeringCheck(
@@ -2655,7 +3007,7 @@ import kotlin.math.tan
          calculatedValue = input.breakerIcsKA,
          unit = "kA",
          message =
-             "Breaker Ics cannot be negative."
+             "Breaker Ics must be greater than zero when supplied."
      )
  }
 
@@ -2806,7 +3158,9 @@ import kotlin.math.tan
          standard = EngineeringStandards.circuitBreakers,
          checks = checks,
          assumptions = listOf(
-             "This is a basic protection coordination check.",
+             "Basic protection coordination: Ib ≤ In ≤ Iz.",
+             "Ultimate breaking capacity: Icu ≥ Ik.",
+             "When Ics is supplied, service breaking capacity is checked against Ik.",
              "Discrimination/selectivity requires a separate study.",
              "Manufacturer data must be verified against the applicable catalog revision."
          )
