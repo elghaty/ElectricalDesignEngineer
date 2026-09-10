@@ -123,74 +123,193 @@ fun PowerFactorCorrectionScreen(
             onClick = {
 
                 val kw =
-                    activePower.toDoubleOrNull() ?: 0.0
+                    activePower.toDoubleOrNull()
 
                 val pfOld =
-                    existingPF
-                        .toDoubleOrNull()
-                        ?.coerceIn(0.01, 0.999)
-                        ?: 0.80
+                    existingPF.toDoubleOrNull()
 
                 val pfTarget =
-                    targetPF
-                        .toDoubleOrNull()
-                        ?.coerceIn(0.01, 0.999)
-                        ?: 0.95
+                    targetPF.toDoubleOrNull()
 
-                if (kw <= 0.0) {
+                if (kw == null || kw <= 0.0) {
 
                     result =
-                        "Please calculate Load first."
+                        "Active power must be greater than zero."
+
+                } else if (
+                    pfOld == null ||
+                    pfOld !in 0.01..1.0
+                ) {
+
+                    result =
+                        "Existing power factor must be between 0.01 and 1.00."
+
+                } else if (
+                    pfTarget == null ||
+                    pfTarget !in 0.01..1.0
+                ) {
+
+                    result =
+                        "Target power factor must be between 0.01 and 1.00."
 
                 } else if (pfTarget <= pfOld) {
 
                     result =
-                        "Target PF must be higher than existing PF."
+                        "Target power factor must be higher than existing power factor."
 
                 } else {
 
-                    ProjectManager.updateSystem(
-                        powerFactor = pfTarget
-                    )
+                    /*
+                     * All engineering calculations are performed
+                     * exclusively by ProfessionalEngineeringCore.
+                     */
 
-                    val capacitor =
-                        ElectricalCalculator.capacitorBank(
+                    val input =
+                        ProfessionalEngineeringCore.CapacitorBankInput(
                             activePowerKW = kw,
-                            existingPF = pfOld,
-                            targetPF = pfTarget
+                            existingPowerFactor = pfOld,
+                            targetPowerFactor = pfTarget
                         )
 
-                    ProjectManager.setCapacitorBank(
-                        capacitorKVAR = capacitor
-                    )
+                    val capacitorResult =
+                        ProfessionalEngineeringCore.calculateCapacitorBank(
+                            input = input
+                        )
 
-                    result = """
-                        POWER FACTOR CORRECTION
-                        
-                        Active Power:
-                        %.2f kW
-                        
-                        Existing Power Factor:
-                        %.3f
-                        
-                        Target Power Factor:
-                        %.3f
-                        
-                        Required Capacitor Bank:
-                        %.2f kVAR
-                        
-                        Design Status:
-                        %s
-                        
-                        ✓ Capacitor bank result saved to ProjectManager
-                        ✓ Power factor updated in project
-                    """.trimIndent().format(
-                        kw,
-                        pfOld,
-                        pfTarget,
-                        capacitor,
-                        ProjectManager.calculation.designStatus
-                    )
+                    when (capacitorResult.status) {
+
+                        EngineeringStatus.PASS -> {
+
+                            ProjectManager.updateSystem(
+                                powerFactor = pfTarget
+                            )
+
+                            ProjectManager.setCapacitorBank(
+                                capacitorKVAR =
+                                    capacitorResult.requiredCompensationKVAR
+                            )
+
+                            result = """
+                                POWER FACTOR CORRECTION
+
+                                Active Power:
+                                %.2f kW
+
+                                Existing Power Factor:
+                                %.3f
+
+                                Target Power Factor:
+                                %.3f
+
+                                Existing Reactive Power:
+                                %.2f kVAR
+
+                                Target Reactive Power:
+                                %.2f kVAR
+
+                                Required Compensation:
+                                %.2f kVAR
+
+                                Design Status:
+                                POWER FACTOR CORRECTION COMPLETE
+
+                                ✓ Calculation performed by ProfessionalEngineeringCore
+                                ✓ Result saved to ProjectManager
+                                ✓ Project power factor updated
+                            """.trimIndent().format(
+                                capacitorResult.activePowerKW,
+                                capacitorResult.existingPowerFactor,
+                                capacitorResult.targetPowerFactor,
+                                capacitorResult.existingReactivePowerKVAR,
+                                capacitorResult.targetReactivePowerKVAR,
+                                capacitorResult.requiredCompensationKVAR
+                            )
+                        }
+
+                        EngineeringStatus.FAIL -> {
+
+                            result =
+                                buildString {
+
+                                    appendLine(
+                                        "POWER FACTOR CORRECTION"
+                                    )
+
+                                    appendLine()
+
+                                    appendLine(
+                                        "Status: FAIL"
+                                    )
+
+                                    appendLine()
+
+                                    capacitorResult.checks.forEach { check ->
+
+                                        appendLine(
+                                            "${check.name}: ${check.message}"
+                                        )
+                                    }
+                                }
+                        }
+
+                        EngineeringStatus.DATA_REQUIRED -> {
+
+                            result =
+                                buildString {
+
+                                    appendLine(
+                                        "POWER FACTOR CORRECTION"
+                                    )
+
+                                    appendLine()
+
+                                    appendLine(
+                                        "Status: DATA REQUIRED"
+                                    )
+
+                                    appendLine()
+
+                                    capacitorResult.checks.forEach { check ->
+
+                                        appendLine(
+                                            "${check.name}: ${check.message}"
+                                        )
+                                    }
+                                }
+                        }
+
+                        EngineeringStatus.WARNING -> {
+
+                            result =
+                                buildString {
+
+                                    appendLine(
+                                        "POWER FACTOR CORRECTION"
+                                    )
+
+                                    appendLine()
+
+                                    appendLine(
+                                        "Status: WARNING"
+                                    )
+
+                                    appendLine()
+
+                                    capacitorResult.checks.forEach { check ->
+
+                                        appendLine(
+                                            "${check.name}: ${check.message}"
+                                        )
+                                    }
+                                }
+                        }
+
+                        EngineeringStatus.NOT_CALCULATED -> {
+
+                            result =
+                                "Power factor correction calculation was not completed."
+                        }
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth()
@@ -212,7 +331,7 @@ fun PowerFactorCorrectionScreen(
             )
 
             Text(
-                text = "✓ Power factor correction saved to ProjectManager",
+                text = "✓ Power factor correction processed by ProfessionalEngineeringCore",
                 style = MaterialTheme.typography.labelLarge
             )
         }
