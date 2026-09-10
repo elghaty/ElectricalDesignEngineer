@@ -25,6 +25,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
+
+private enum class TransformerSource {
+    VERIFIED_CATALOG,
+    EEHC_STANDARD,
+    NAMEPLATE
+}
 
 @Composable
 fun ShortCircuitScreen(
@@ -32,16 +39,6 @@ fun ShortCircuitScreen(
 ) {
 
     val project = ProjectManager.calculation
-
-    // ============================================================
-    // TRANSFORMER SOURCES
-    // ============================================================
-
-    enum class TransformerSource {
-        VERIFIED_CATALOG,
-        EEHC_STANDARD,
-        NAMEPLATE
-    }
 
     val verifiedTransformers =
         remember {
@@ -58,10 +55,6 @@ fun ShortCircuitScreen(
                 .sortedBy { it.ratingKVA }
         }
 
-    // ============================================================
-    // DEFAULT SOURCE
-    // ============================================================
-
     val defaultSource =
         if (verifiedTransformers.isNotEmpty()) {
             TransformerSource.VERIFIED_CATALOG
@@ -73,15 +66,11 @@ fun ShortCircuitScreen(
         mutableStateOf(defaultSource)
     }
 
-    // ============================================================
-    // VERIFIED CATALOG SELECTION
-    // ============================================================
-
     var selectedCatalogTransformer by remember {
         mutableStateOf(
             verifiedTransformers.firstOrNull {
                 project.transformerKVA > 0.0 &&
-                    kotlin.math.abs(
+                    abs(
                         it.ratedPowerKVA -
                             project.transformerKVA
                     ) < 0.001
@@ -92,10 +81,6 @@ fun ShortCircuitScreen(
     var catalogMenuExpanded by remember {
         mutableStateOf(false)
     }
-
-    // ============================================================
-    // EEHC STANDARD SELECTION
-    // ============================================================
 
     val requiredKVA =
         project.totalKVA
@@ -126,10 +111,6 @@ fun ShortCircuitScreen(
     var standardMenuExpanded by remember {
         mutableStateOf(false)
     }
-
-    // ============================================================
-    // NAMEPLATE / MANUAL DATA
-    // ============================================================
 
     var nameplateKVA by remember {
         mutableStateOf(
@@ -170,32 +151,19 @@ fun ShortCircuitScreen(
         )
     }
 
-    // ============================================================
-    // RESULT
-    // ============================================================
-
     var resultText by remember {
         mutableStateOf("")
-    }
-
-    var faultCurrentKA by remember {
-        mutableStateOf(
-            project.shortCircuitKA
-        )
     }
 
     var ratedCurrentA by remember {
         mutableStateOf(0.0)
     }
 
-    // ============================================================
-    // HELPERS
-    // ============================================================
-
     fun sourceName(
         source: TransformerSource
     ): String {
         return when (source) {
+
             TransformerSource.VERIFIED_CATALOG ->
                 "Verified Manufacturer Catalog"
 
@@ -213,6 +181,21 @@ fun ShortCircuitScreen(
         impedancePercent: Double,
         referenceMode: Boolean
     ) {
+
+        if (
+            kva <= 0.0 ||
+            voltageV <= 0.0 ||
+            impedancePercent <= 0.0
+        ) {
+
+            resultText =
+                "DATA REQUIRED\n\n" +
+                    "Transformer rating, LV voltage and " +
+                    "transformer impedance must be valid " +
+                    "positive engineering values."
+
+            return
+        }
 
         ProjectManager.updateSystem(
             voltageV = voltageV
@@ -233,13 +216,11 @@ fun ShortCircuitScreen(
 
         val input =
             ShortCircuitInput(
-
                 faultType =
                     ShortCircuitFaultType.THREE_PHASE,
 
                 source =
                     ShortCircuitSourceInput(
-
                         transformerKVA =
                             kva,
 
@@ -273,20 +254,6 @@ fun ShortCircuitScreen(
                 .calculateShortCircuit(
                     input
                 )
-
-        faultCurrentKA =
-            calculation.faultCurrentKA
-
-        if (
-            calculation.status ==
-            EngineeringStatus.PASS
-        ) {
-
-            ProjectManager.setShortCircuit(
-                shortCircuitKA =
-                    calculation.faultCurrentKA
-            )
-        }
 
         val statusText =
             when (calculation.status) {
@@ -390,8 +357,7 @@ fun ShortCircuitScreen(
                 appendLine(
                     "Prospective Short Circuit: " +
                         "%.3f kA".format(
-                            calculation
-                                .faultCurrentKA
+                            calculation.faultCurrentKA
                         )
                 )
 
@@ -447,9 +413,7 @@ fun ShortCircuitScreen(
                         )
                 )
 
-                if (
-                    referenceMode
-                ) {
+                if (referenceMode) {
 
                     appendLine()
 
@@ -458,23 +422,19 @@ fun ShortCircuitScreen(
                     )
 
                     appendLine(
-                        "The transformer rating and " +
-                            "%Z are based on the " +
-                            "EEHC standard/reference " +
-                            "transformer table."
+                        "The transformer rating and %Z " +
+                            "are based on the EEHC " +
+                            "standard/reference transformer table."
                     )
 
                     appendLine(
-                        "This is suitable for " +
-                            "preliminary short-circuit " +
-                            "assessment only."
+                        "This is suitable for preliminary " +
+                            "short-circuit assessment only."
                     )
 
                     appendLine(
-                        "Final design must use the " +
-                            "actual transformer " +
-                            "manufacturer nameplate " +
-                            "impedance."
+                        "Final design must use the actual " +
+                            "transformer manufacturer nameplate %Z."
                     )
                 }
 
@@ -526,11 +486,18 @@ fun ShortCircuitScreen(
                         }
                 }
             }
-    }
 
-    // ============================================================
-    // UI
-    // ============================================================
+        if (
+            calculation.status ==
+            EngineeringStatus.PASS
+        ) {
+
+            ProjectManager.setShortCircuit(
+                shortCircuitKA =
+                    calculation.faultCurrentKA
+            )
+        }
+    }
 
     Column(
         modifier =
@@ -568,10 +535,6 @@ fun ShortCircuitScreen(
 
         HorizontalDivider()
 
-        // ========================================================
-        // REQUIRED LOAD
-        // ========================================================
-
         Text(
             text =
                 "Required Transformer Capacity",
@@ -589,18 +552,10 @@ fun ShortCircuitScreen(
                 } else {
                     "Project demand is not available. " +
                         "Select transformer manually."
-                },
-            style =
-                MaterialTheme
-                    .typography
-                    .bodyMedium
+                }
         )
 
         HorizontalDivider()
-
-        // ========================================================
-        // TRANSFORMER SOURCE
-        // ========================================================
 
         Text(
             text =
@@ -627,8 +582,7 @@ fun ShortCircuitScreen(
                 modifier =
                     Modifier.weight(1f),
                 enabled =
-                    verifiedTransformers
-                        .isNotEmpty()
+                    verifiedTransformers.isNotEmpty()
             ) {
 
                 Text(
@@ -706,9 +660,8 @@ fun ShortCircuitScreen(
 
                 Text(
                     text =
-                        "No verified manufacturer " +
-                            "transformer records are currently " +
-                            "available."
+                        "No verified manufacturer transformer " +
+                            "records are currently available."
                 )
 
                 Text(
@@ -719,7 +672,7 @@ fun ShortCircuitScreen(
 
             } else {
 
-                BoxLikeDropdown(
+                TransformerDropdown(
                     expanded =
                         catalogMenuExpanded,
 
@@ -774,57 +727,42 @@ fun ShortCircuitScreen(
                     transformer ->
 
                     Text(
-                        text =
-                            "Rating: " +
-                                "%.0f kVA"
-                                    .format(
-                                        transformer
-                                            .ratedPowerKVA
-                                    )
+                        "Rating: %.0f kVA"
+                            .format(
+                                transformer.ratedPowerKVA
+                            )
+                    )
+
+                    Text(
+                        "LV Voltage: %.0f V"
+                            .format(
+                                transformer.secondaryVoltageV
+                            )
+                    )
+
+                    Text(
+                        "Frequency: %.0f Hz"
+                            .format(
+                                transformer.frequencyHz
+                            )
+                    )
+
+                    Text(
+                        "Impedance: ${
+                            transformer.impedancePercent
+                                ?.let {
+                                    "%.2f %%".format(it)
+                                }
+                                ?: "DATA REQUIRED"
+                        }"
                     )
 
                     Text(
                         text =
-                            "LV Voltage: " +
-                                "%.0f V"
-                                    .format(
-                                        transformer
-                                            .secondaryVoltageV
-                                    )
-                    )
-
-                    Text(
-                        text =
-                            "Frequency: " +
-                                "%.0f Hz"
-                                    .format(
-                                        transformer
-                                            .frequencyHz
-                                    )
-                    )
-
-                    Text(
-                        text =
-                            "Impedance: " +
-                                (
-                                    transformer
-                                        .impedancePercent
-                                        ?.let {
-                                            "%.2f %%"
-                                                .format(it)
-                                        }
-                                        ?: "DATA REQUIRED"
-                                    )
-                    )
-
-                    Text(
-                        text =
-                            "Source: " +
-                                (
-                                    transformer
-                                        .sourceUrl
-                                        ?: transformer.catalogName
-                                ),
+                            "Source: ${
+                                transformer.sourceUrl
+                                    ?: transformer.catalogName
+                            }",
                         style =
                             MaterialTheme
                                 .typography
@@ -859,27 +797,22 @@ fun ShortCircuitScreen(
             ) {
 
                 Text(
-                    text =
-                        "Recommended rating: " +
-                            "%.0f kVA"
-                                .format(
-                                    recommendedStandard
-                                        .ratingKVA
-                                )
+                    "Recommended rating: %.0f kVA"
+                        .format(
+                            recommendedStandard.ratingKVA
+                        )
                 )
 
                 Text(
-                    text =
-                        "Reference %Z: " +
-                            "%.2f %%"
-                                .format(
-                                    recommendedStandard
-                                        .referenceImpedancePercent
-                                )
+                    "Reference %Z: %.2f %%"
+                        .format(
+                            recommendedStandard
+                                .referenceImpedancePercent
+                        )
                 )
             }
 
-            BoxLikeDropdown(
+            TransformerDropdown(
                 expanded =
                     standardMenuExpanded,
 
@@ -961,7 +894,7 @@ fun ShortCircuitScreen(
         }
 
         // ========================================================
-        // EXISTING TRANSFORMER / NAMEPLATE
+        // NAMEPLATE
         // ========================================================
 
         if (
@@ -981,64 +914,52 @@ fun ShortCircuitScreen(
             )
 
             OutlinedTextField(
-                value =
-                    nameplateKVA,
-
+                value = nameplateKVA,
                 onValueChange = {
                     nameplateKVA = it
                 },
-
                 label = {
                     Text(
                         "Transformer Rating (kVA)"
                     )
                 },
-
                 modifier =
                     Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
-                value =
-                    nameplateVoltage,
-
+                value = nameplateVoltage,
                 onValueChange = {
                     nameplateVoltage = it
                 },
-
                 label = {
                     Text(
                         "LV Voltage (V)"
                     )
                 },
-
                 modifier =
                     Modifier.fillMaxWidth()
             )
 
             OutlinedTextField(
-                value =
-                    nameplateImpedance,
-
+                value = nameplateImpedance,
                 onValueChange = {
                     nameplateImpedance = it
                 },
-
                 label = {
                     Text(
                         "Actual Transformer Impedance (%Z)"
                     )
                 },
-
                 modifier =
                     Modifier.fillMaxWidth()
             )
 
             Text(
                 text =
-                    "All three values must come from " +
-                        "the actual transformer nameplate " +
-                        "or verified manufacturer technical data."
+                    "All three values must come from the actual " +
+                        "transformer nameplate or verified " +
+                        "manufacturer technical data."
             )
         }
 
@@ -1050,10 +971,6 @@ fun ShortCircuitScreen(
             onClick = {
 
                 when (transformerSource) {
-
-                    // ==================================================
-                    // VERIFIED CATALOG
-                    // ==================================================
 
                     TransformerSource.VERIFIED_CATALOG -> {
 
@@ -1067,29 +984,16 @@ fun ShortCircuitScreen(
                                     "Select a verified manufacturer " +
                                     "transformer before calculation."
 
-                            faultCurrentKA =
-                                0.0
-
-                            ratedCurrentA =
-                                0.0
+                            ratedCurrentA = 0.0
 
                         } else {
 
-                            val kva =
-                                transformer
-                                    .ratedPowerKVA
-
-                            val voltageV =
-                                transformer
-                                    .secondaryVoltageV
-
                             val z =
-                                transformer
-                                    .impedancePercent
+                                transformer.impedancePercent
 
                             if (
-                                kva <= 0.0 ||
-                                voltageV <= 0.0 ||
+                                transformer.ratedPowerKVA <= 0.0 ||
+                                transformer.secondaryVoltageV <= 0.0 ||
                                 z == null ||
                                 z <= 0.0
                             ) {
@@ -1100,27 +1004,26 @@ fun ShortCircuitScreen(
                                         "transformer does not have " +
                                         "complete verified impedance data."
 
-                                faultCurrentKA =
-                                    0.0
-
-                                ratedCurrentA =
-                                    0.0
+                                ratedCurrentA = 0.0
 
                             } else {
 
                                 calculateShortCircuit(
-                                    kva = kva,
-                                    voltageV = voltageV,
-                                    impedancePercent = z,
-                                    referenceMode = false
+                                    kva =
+                                        transformer.ratedPowerKVA,
+
+                                    voltageV =
+                                        transformer.secondaryVoltageV,
+
+                                    impedancePercent =
+                                        z,
+
+                                    referenceMode =
+                                        false
                                 )
                             }
                         }
                     }
-
-                    // ==================================================
-                    // EEHC STANDARD
-                    // ==================================================
 
                     TransformerSource.EEHC_STANDARD -> {
 
@@ -1134,11 +1037,7 @@ fun ShortCircuitScreen(
                                     "Select an EEHC standard " +
                                     "transformer rating."
 
-                            faultCurrentKA =
-                                0.0
-
-                            ratedCurrentA =
-                                0.0
+                            ratedCurrentA = 0.0
 
                         } else {
 
@@ -1150,18 +1049,13 @@ fun ShortCircuitScreen(
                                     transformer.secondaryVoltageV,
 
                                 impedancePercent =
-                                    transformer
-                                        .referenceImpedancePercent,
+                                    transformer.referenceImpedancePercent,
 
                                 referenceMode =
                                     true
                             )
                         }
                     }
-
-                    // ==================================================
-                    // NAMEPLATE
-                    // ==================================================
 
                     TransformerSource.NAMEPLATE -> {
 
@@ -1200,11 +1094,7 @@ fun ShortCircuitScreen(
                                     "• Actual transformer %Z\n\n" +
                                     "No engineering value was assumed."
 
-                            faultCurrentKA =
-                                0.0
-
-                            ratedCurrentA =
-                                0.0
+                            ratedCurrentA = 0.0
 
                         } else {
 
@@ -1224,8 +1114,7 @@ fun ShortCircuitScreen(
         ) {
 
             Text(
-                text =
-                    "Calculate & Save Short Circuit"
+                "Calculate & Save Short Circuit"
             )
         }
 
@@ -1233,16 +1122,12 @@ fun ShortCircuitScreen(
         // RESULT
         // ========================================================
 
-        if (
-            resultText.isNotBlank()
-        ) {
+        if (resultText.isNotBlank()) {
 
             HorizontalDivider()
 
             Text(
-                text =
-                    resultText,
-
+                text = resultText,
                 style =
                     MaterialTheme
                         .typography
@@ -1251,7 +1136,7 @@ fun ShortCircuitScreen(
         }
 
         // ========================================================
-        // CURRENT PROJECT RESULT
+        // PROJECT RESULT
         // ========================================================
 
         HorizontalDivider()
@@ -1266,83 +1151,73 @@ fun ShortCircuitScreen(
         )
 
         Text(
-            text =
-                "Transformer: %.0f kVA"
-                    .format(
-                        ProjectManager
-                            .calculation
-                            .transformerKVA
-                    )
-        )
-
-        Text(
-            text =
-                "Transformer %Z: ${
-                    if (
-                        ProjectManager
-                            .calculation
-                            .transformerImpedancePercent >
-                        0.0
-                    ) {
-
-                        "%.2f %%".format(
-                            ProjectManager
-                                .calculation
-                                .transformerImpedancePercent
-                        )
-
-                    } else {
-
-                        "N/A - Actual Data Required"
-                    }
-                }"
-        )
-
-        Text(
-            text =
-                "Voltage: %.0f V"
-                    .format(
-                        ProjectManager
-                            .calculation
-                            .voltageV
-                    )
-        )
-
-        Text(
-            text =
-                "Transformer Rated Current: %.2f A"
-                    .format(
-                        ratedCurrentA
-                    )
-        )
-
-        Text(
-            text =
-                "Short Circuit: %.3f kA"
-                    .format(
-                        ProjectManager
-                            .calculation
-                            .shortCircuitKA
-                    )
-        )
-
-        Text(
-            text =
-                "Design Status: ${
+            "Transformer: %.0f kVA"
+                .format(
                     ProjectManager
                         .calculation
-                        .designStatus
-                }"
+                        .transformerKVA
+                )
+        )
+
+        Text(
+            "Transformer %Z: ${
+                if (
+                    ProjectManager
+                        .calculation
+                        .transformerImpedancePercent >
+                    0.0
+                ) {
+
+                    "%.2f %%".format(
+                        ProjectManager
+                            .calculation
+                            .transformerImpedancePercent
+                    )
+
+                } else {
+
+                    "N/A - Actual Data Required"
+                }
+            }"
+        )
+
+        Text(
+            "Voltage: %.0f V"
+                .format(
+                    ProjectManager
+                        .calculation
+                        .voltageV
+                )
+        )
+
+        Text(
+            "Transformer Rated Current: %.2f A"
+                .format(
+                    ratedCurrentA
+                )
+        )
+
+        Text(
+            "Short Circuit: %.3f kA"
+                .format(
+                    ProjectManager
+                        .calculation
+                        .shortCircuitKA
+                )
+        )
+
+        Text(
+            "Design Status: ${
+                ProjectManager
+                    .calculation
+                    .designStatus
+            }"
         )
 
         Spacer(
             modifier =
                 Modifier.height(10.dp)
         )
-
-        // ========================================================
-        // BACK
-        // ========================================================
 
         Button(
             onClick = onBack,
@@ -1357,13 +1232,8 @@ fun ShortCircuitScreen(
     }
 }
 
-
-// ================================================================
-// SIMPLE DROPDOWN CONTAINER
-// ================================================================
-
 @Composable
-private fun BoxLikeDropdown(
+private fun TransformerDropdown(
     expanded: Boolean,
     onExpandedChange: () -> Unit,
     title: String,
