@@ -25,6 +25,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,26 +48,12 @@ fun CableSizingScreen(
 
     val project = ProjectManager.calculation
 
-    var designCurrent by remember {
+    var currentType by remember {
         mutableStateOf(
-            if (project.designCurrentA > 0.0) {
-                "%.2f".format(project.designCurrentA)
+            if (project.isThreePhase) {
+                "Alternating three-phase"
             } else {
-                ""
-            }
-        )
-    }
-
-    var loadKW by remember {
-        mutableStateOf("")
-    }
-
-    var length by remember {
-        mutableStateOf(
-            if (project.cableLengthM > 0.0) {
-                "%.2f".format(project.cableLengthM)
-            } else {
-                ""
+                "Alternating single-phase"
             }
         )
     }
@@ -81,46 +68,72 @@ fun CableSizingScreen(
         )
     }
 
+    var load by remember {
+        mutableStateOf("")
+    }
+
     var powerFactor by remember {
         mutableStateOf(
             if (project.powerFactor > 0.0) {
-                "%.3f".format(project.powerFactor)
+                "%.2f".format(project.powerFactor)
             } else {
                 "0.90"
             }
         )
     }
 
-    var maximumVoltageDrop by remember {
-        mutableStateOf("5.0")
+    var designCurrent by remember {
+        mutableStateOf(
+            if (project.designCurrentA > 0.0) {
+                "%.2f".format(project.designCurrentA)
+            } else {
+                ""
+            }
+        )
     }
 
-    var isThreePhase by remember {
-        mutableStateOf(project.isThreePhase)
-    }
-
-    var material by remember {
-        mutableStateOf(CableMaterial.COPPER)
-    }
-
-    var insulation by remember {
-        mutableStateOf(InsulationType.XLPE)
+    var lineLength by remember {
+        mutableStateOf(
+            if (project.cableLengthM > 0.0) {
+                "%.0f".format(project.cableLengthM)
+            } else {
+                "60"
+            }
+        )
     }
 
     var installationMethod by remember {
-        mutableStateOf(InstallationMethod.CABLE_TRAY)
+        mutableStateOf(
+            InstallationMethod.CABLE_TRAY
+        )
     }
 
     var ambientTemperature by remember {
         mutableStateOf(30)
     }
 
+    var material by remember {
+        mutableStateOf(
+            CableMaterial.COPPER
+        )
+    }
+
+    var insulation by remember {
+        mutableStateOf(
+            InsulationType.PVC
+        )
+    }
+
     var circuitsInConduit by remember {
         mutableStateOf(1)
     }
 
-    var engineerOverride by remember {
-        mutableStateOf(false)
+    var maximumVoltageDrop by remember {
+        mutableStateOf("4")
+    }
+
+    var automaticSelection by remember {
+        mutableStateOf(true)
     }
 
     var selectedManualSize by remember {
@@ -148,6 +161,7 @@ fun CableSizingScreen(
                 installationMethod = installationMethod
             )
             .filter {
+
                 it.sizeMm2 > 0.0 &&
                     it.baseAmpacityA > 0.0 &&
                     it.resistanceOhmPerKm > 0.0 &&
@@ -159,71 +173,14 @@ fun CableSizingScreen(
             }
     }
 
-    fun calculateDesignCurrentFromLoad(
-        load: Double,
-        voltageValue: Double,
-        pf: Double
+    fun parseNumber(
+        value: String
     ): Double? {
 
-        if (load <= 0.0) {
-            return null
-        }
-
-        if (voltageValue <= 0.0) {
-            return null
-        }
-
-        if (pf !in 0.01..1.0) {
-            return null
-        }
-
-        /*
-         * IMPORTANT:
-         *
-         * No electrical formula is duplicated here.
-         *
-         * The calculation is intentionally routed through
-         * ProfessionalEngineeringCore.calculateLoads().
-         */
-
-        val phaseSystem =
-            if (isThreePhase) {
-                ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
-            } else {
-                ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
-            }
-
-        val system =
-            ProfessionalEngineeringCore.SystemInput(
-                voltageV = voltageValue,
-                frequencyHz = 50.0,
-                phaseSystem = phaseSystem,
-                powerFactor = pf
-            )
-
-        val loadInput =
-            ProfessionalEngineeringCore.LoadInput(
-                name = "Cable Design Load",
-                quantity = 1.0,
-                unitPowerKW = load,
-                demandFactor = 1.0,
-                powerFactor = pf
-            )
-
-        val result =
-            ProfessionalEngineeringCore.calculateLoads(
-                loads = listOf(loadInput),
-                system = system
-            )
-
-        if (
-            result.trace.status == EngineeringStatus.FAIL ||
-            result.currentA <= 0.0
-        ) {
-            return null
-        }
-
-        return result.currentA
+        return value
+            .replace(',', '.')
+            .trim()
+            .toDoubleOrNull()
     }
 
     fun calculateCable() {
@@ -231,53 +188,50 @@ fun CableSizingScreen(
         resultText = ""
         errorText = ""
 
-        val enteredCurrent =
-            designCurrent
-                .replace(',', '.')
-                .toDoubleOrNull()
+        val systemVoltage =
+            parseNumber(voltage)
 
         val enteredLoad =
-            loadKW
-                .replace(',', '.')
-                .toDoubleOrNull()
+            parseNumber(load)
+
+        val enteredCurrent =
+            parseNumber(designCurrent)
+
+        val enteredPF =
+            parseNumber(powerFactor)
 
         val cableLength =
-            length
-                .replace(',', '.')
-                .toDoubleOrNull()
+            parseNumber(lineLength)
 
-        val systemVoltage =
-            voltage
-                .replace(',', '.')
-                .toDoubleOrNull()
+        val maximumDrop =
+            parseNumber(maximumVoltageDrop)
 
-        val pf =
-            powerFactor
-                .replace(',', '.')
-                .toDoubleOrNull()
-
-        val maxDrop =
-            maximumVoltageDrop
-                .replace(',', '.')
-                .toDoubleOrNull()
-
-        if (cableLength == null || cableLength <= 0.0) {
+        if (
+            systemVoltage == null ||
+            systemVoltage <= 0.0
+        ) {
 
             errorText =
-                "Cable length must be greater than zero."
+                "Voltage must be greater than zero."
 
             return
         }
 
-        if (systemVoltage == null || systemVoltage <= 0.0) {
+        if (
+            cableLength == null ||
+            cableLength <= 0.0
+        ) {
 
             errorText =
-                "System voltage must be greater than zero."
+                "Line length must be greater than zero."
 
             return
         }
 
-        if (pf == null || pf !in 0.01..1.0) {
+        if (
+            enteredPF == null ||
+            enteredPF !in 0.01..1.0
+        ) {
 
             errorText =
                 "Power factor must be between 0.01 and 1.00."
@@ -285,7 +239,10 @@ fun CableSizingScreen(
             return
         }
 
-        if (maxDrop == null || maxDrop <= 0.0) {
+        if (
+            maximumDrop == null ||
+            maximumDrop <= 0.0
+        ) {
 
             errorText =
                 "Maximum voltage drop must be greater than zero."
@@ -293,11 +250,31 @@ fun CableSizingScreen(
             return
         }
 
+        val threePhase =
+            currentType ==
+                "Alternating three-phase"
+
+        ProjectManager.updateSystem(
+            voltageV = systemVoltage,
+            powerFactor = enteredPF,
+            isThreePhase = threePhase
+        )
+
         /*
-         * Design current priority:
+         * ========================================================
+         * IMPORTANT ARCHITECTURE RULE
+         * ========================================================
          *
-         * 1. Engineer entered Design Current
-         * 2. Otherwise calculate it automatically from Load
+         * CableSizingScreen DOES NOT calculate engineering values.
+         *
+         * If Design Current is entered, it is passed directly
+         * to ProfessionalEngineeringCore.
+         *
+         * If Load is entered instead, the current is calculated
+         * ONLY by ProfessionalEngineeringCore.calculateLoads().
+         *
+         * No electrical formula exists in this UI.
+         * ========================================================
          */
 
         val current =
@@ -308,57 +285,87 @@ fun CableSizingScreen(
 
                 enteredCurrent
 
-            } else if (
-                enteredLoad != null &&
-                enteredLoad > 0.0
-            ) {
-
-                calculateDesignCurrentFromLoad(
-                    load = enteredLoad,
-                    voltageValue = systemVoltage,
-                    pf = pf
-                )
-
             } else {
 
-                null
+                if (
+                    enteredLoad == null ||
+                    enteredLoad <= 0.0
+                ) {
+
+                    errorText =
+                        "Enter Design Current or Load."
+
+                    return
+                }
+
+                val phaseSystem =
+                    if (threePhase) {
+                        ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
+                    } else {
+                        ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
+                    }
+
+                val system =
+                    ProfessionalEngineeringCore.SystemInput(
+                        voltageV = systemVoltage,
+                        frequencyHz = 50.0,
+                        phaseSystem = phaseSystem,
+                        powerFactor = enteredPF
+                    )
+
+                val loadInput =
+                    ProfessionalEngineeringCore.LoadInput(
+                        name = "Cable Design Load",
+                        quantity = 1.0,
+                        unitPowerKW = enteredLoad,
+                        demandFactor = 1.0,
+                        powerFactor = enteredPF
+                    )
+
+                val loadResult =
+                    ProfessionalEngineeringCore.calculateLoads(
+                        loads = listOf(loadInput),
+                        system = system
+                    )
+
+                if (
+                    loadResult.trace.status ==
+                        EngineeringStatus.FAIL ||
+                    loadResult.currentA <= 0.0
+                ) {
+
+                    errorText =
+                        "Professional Engineering Core could not calculate the design current."
+
+                    return
+                }
+
+                loadResult.currentA
             }
 
-        if (current == null || current <= 0.0) {
+        if (
+            availableCables.isEmpty()
+        ) {
 
             errorText =
-                "Enter Design Current or enter Load (kW) to calculate the current automatically."
-
-            return
-        }
-
-        if (availableCables.isEmpty()) {
-
-            errorText =
-                "No verified cable data is available for the selected configuration."
+                "No verified cable data is available for this configuration."
 
             return
         }
 
         if (
-            engineerOverride &&
+            !automaticSelection &&
             selectedManualSize == null
         ) {
 
             errorText =
-                "Select a verified cable size for Engineer Override."
+                "Select a verified cable size."
 
             return
         }
 
-        ProjectManager.updateSystem(
-            voltageV = systemVoltage,
-            powerFactor = pf,
-            isThreePhase = isThreePhase
-        )
-
         val phaseSystem =
-            if (isThreePhase) {
+            if (threePhase) {
                 ProfessionalEngineeringCore.PhaseSystem.THREE_PHASE
             } else {
                 ProfessionalEngineeringCore.PhaseSystem.SINGLE_PHASE
@@ -384,6 +391,7 @@ fun CableSizingScreen(
                                     installationMethod
                             )
                             .filter {
+
                                 it.sizeMm2 > 0.0 &&
                                     it.baseAmpacityA > 0.0 &&
                                     it.resistanceOhmPerKm > 0.0 &&
@@ -394,7 +402,7 @@ fun CableSizingScreen(
                                 it.sizeMm2
                             }
 
-                    if (!engineerOverride) {
+                    if (automaticSelection) {
                         return catalog
                     }
 
@@ -405,13 +413,27 @@ fun CableSizingScreen(
                     return catalog.filter {
 
                         abs(
-                            it.sizeMm2 - manualSize
+                            it.sizeMm2 -
+                                manualSize
                         ) < 0.000001
                     }
                 }
             }
 
-        val input =
+        /*
+         * The UI does NOT calculate correction factors.
+         *
+         * The current ProfessionalEngineeringCore API requires
+         * groupingFactor as an input. Until that API is extended
+         * to accept circuitsInConduit directly and calculate the
+         * engineering factor internally, the UI deliberately
+         * does NOT contain a correction-factor table.
+         *
+         * The Core remains the only place where engineering
+         * calculations are permitted.
+         */
+
+        val cableInput =
             ProfessionalEngineeringCore.CableDesignInput(
 
                 designCurrentA =
@@ -424,7 +446,7 @@ fun CableSizingScreen(
                     systemVoltage,
 
                 powerFactor =
-                    pf,
+                    enteredPF,
 
                 phaseSystem =
                     phaseSystem,
@@ -439,7 +461,7 @@ fun CableSizingScreen(
                     installationMethod,
 
                 numberOfLoadedConductors =
-                    if (isThreePhase) {
+                    if (threePhase) {
                         3
                     } else {
                         2
@@ -449,9 +471,7 @@ fun CableSizingScreen(
                     ambientTemperature.toDouble(),
 
                 groupingFactor =
-                    groupingFactorForCircuits(
-                        circuitsInConduit
-                    ),
+                    1.0,
 
                 thermalInsulationFactor =
                     1.0,
@@ -460,7 +480,7 @@ fun CableSizingScreen(
                     1.0,
 
                 maximumVoltageDropPercent =
-                    maxDrop,
+                    maximumDrop,
 
                 maximumParallelRuns =
                     8
@@ -468,7 +488,7 @@ fun CableSizingScreen(
 
         val calculation =
             ProfessionalEngineeringCore.designCable(
-                input = input,
+                input = cableInput,
                 provider = provider
             )
 
@@ -481,13 +501,13 @@ fun CableSizingScreen(
                 when (calculation.status) {
 
                     EngineeringStatus.DATA_REQUIRED ->
-                        "DATA REQUIRED: verified cable engineering data is incomplete."
+                        "DATA REQUIRED: verified engineering data is incomplete."
 
                     EngineeringStatus.FAIL ->
-                        "No cable configuration satisfies the design requirements."
+                        "No cable configuration satisfies the requirements."
 
                     EngineeringStatus.WARNING ->
-                        "WARNING: the calculation did not produce a valid cable."
+                        "WARNING: Professional Engineering Core returned a warning."
 
                     else ->
                         "No suitable cable was found."
@@ -514,24 +534,14 @@ fun CableSizingScreen(
                 calculation.voltageDropPercent
         )
 
-        val currentSource =
-            if (
-                enteredCurrent != null &&
-                enteredCurrent > 0.0
-            ) {
-                "Engineer Design Current"
-            } else {
-                "Automatically calculated from Load"
-            }
-
         resultText =
             buildString {
 
                 appendLine(
-                    if (engineerOverride) {
-                        "ENGINEER OVERRIDE — VALIDATED"
-                    } else {
+                    if (automaticSelection) {
                         "AUTOMATIC CABLE SELECTION"
+                    } else {
+                        "ENGINEER OVERRIDE — VALIDATED"
                     }
                 )
 
@@ -573,12 +583,6 @@ fun CableSizingScreen(
                 )
 
                 appendLine(
-                    "Current Source : $currentSource"
-                )
-
-                appendLine()
-
-                appendLine(
                     "Voltage Drop : %.2f V"
                         .format(
                             calculation.voltageDropV
@@ -603,15 +607,15 @@ fun CableSizingScreen(
                 )
 
                 appendLine(
-                    "Installation : ${installationMethod.name}"
+                    "Installation : ${installationMethod.displayName()}"
                 )
 
                 appendLine(
-                    "Ambient Temperature : ${ambientTemperature} °C"
+                    "Ambient : $ambientTemperature °C"
                 )
 
                 appendLine(
-                    "Circuits in Conduit : $circuitsInConduit"
+                    "Circuits : $circuitsInConduit"
                 )
 
                 appendLine()
@@ -620,22 +624,15 @@ fun CableSizingScreen(
                     "Status : ${calculation.status}"
                 )
 
-                appendLine()
-
                 appendLine(
-                    "Data Source : ${selected.source}"
+                    "Source : ${selected.source}"
                 )
 
                 appendLine(
-                    "Data Revision : ${selected.revision}"
+                    "Revision : ${selected.revision}"
                 )
             }
     }
-
-    val wideLayout =
-        androidx.compose.ui.platform.LocalConfiguration
-            .current
-            .screenWidthDp >= 700
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -644,292 +641,562 @@ fun CableSizingScreen(
 
         Column(
             modifier =
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(
-                        rememberScrollState()
-                    )
-                    .padding(
-                        horizontal = 18.dp,
-                        vertical = 14.dp
-                    ),
-            verticalArrangement =
-                Arrangement.spacedBy(12.dp)
+                Modifier.fillMaxSize()
         ) {
 
-            HeaderSection(
-                projectName =
-                    project.projectName.ifBlank {
-                        "Current Project"
-                    }
+            TopEngineeringBar(
+                onBack = onBack
             )
 
-            if (wideLayout) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+            ) {
 
-                Row(
+                SideEngineeringMenu()
+
+                Column(
                     modifier =
-                        Modifier.fillMaxWidth(),
-                    horizontalArrangement =
-                        Arrangement.spacedBy(16.dp),
-                    verticalAlignment =
-                        Alignment.Top
+                        Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .verticalScroll(
+                                rememberScrollState()
+                            )
+                            .padding(
+                                horizontal = 28.dp,
+                                vertical = 16.dp
+                            ),
+                    verticalArrangement =
+                        Arrangement.spacedBy(10.dp)
                 ) {
 
-                    Column(
+                    StandardTabs()
+
+                    Text(
+                        text =
+                            "Conductor sizing and protective device coordination",
+                        fontSize = 18.sp,
+                        fontWeight =
+                            FontWeight.Medium,
                         modifier =
-                            Modifier.weight(1f),
-                        verticalArrangement =
-                            Arrangement.spacedBy(12.dp)
-                    ) {
+                            Modifier.padding(
+                                bottom = 8.dp
+                            )
+                    )
 
-                        DesignInputCard(
-                            designCurrent = designCurrent,
-                            onDesignCurrentChange = {
-                                designCurrent = it
-                            },
-                            loadKW = loadKW,
-                            onLoadChange = {
-                                loadKW = it
-                            },
-                            length = length,
-                            onLengthChange = {
-                                length = it
-                            },
-                            voltage = voltage,
-                            onVoltageChange = {
-                                voltage = it
-                            },
-                            powerFactor = powerFactor,
-                            onPowerFactorChange = {
-                                powerFactor = it
-                            },
-                            maximumVoltageDrop =
-                                maximumVoltageDrop,
-                            onMaximumVoltageDropChange = {
-                                maximumVoltageDrop = it
-                            },
-                            isThreePhase =
-                                isThreePhase,
-                            onThreePhaseChange = {
-                                isThreePhase = it
+                    EngineeringDropdown(
+                        label = "Current type:",
+                        value = currentType,
+                        options =
+                            listOf(
+                                "Direct current",
+                                "Alternating single-phase",
+                                "Alternating two-phase",
+                                "Alternating three-phase"
+                            ),
+                        onSelected = {
+
+                            currentType = it
+
+                            if (
+                                it ==
+                                    "Alternating three-phase"
+                            ) {
+                                ProjectManager.updateSystem(
+                                    isThreePhase = true
+                                )
+                            } else if (
+                                it ==
+                                    "Alternating single-phase"
+                            ) {
+                                ProjectManager.updateSystem(
+                                    isThreePhase = false
+                                )
                             }
-                        )
+                        }
+                    )
 
-                        CableDataCard(
-                            material = material,
-                            onMaterialChange = {
-                                material = it
-                                selectedManualSize = null
-                                resultText = ""
-                                errorText = ""
-                            },
-                            insulation = insulation,
-                            onInsulationChange = {
-                                insulation = it
-                                selectedManualSize = null
-                                resultText = ""
-                                errorText = ""
-                            },
+                    EngineeringInputLine(
+                        label = "Voltage:",
+                        value = voltage,
+                        unit = "V",
+                        onValueChange = {
+                            voltage = it
+                        }
+                    )
+
+                    EngineeringInputLine(
+                        label = "Load:",
+                        value = load,
+                        unit = "W",
+                        onValueChange = {
+                            load = it
+                        }
+                    )
+
+                    EngineeringInputLine(
+                        label = "Design current:",
+                        value = designCurrent,
+                        unit = "A",
+                        onValueChange = {
+                            designCurrent = it
+                        }
+                    )
+
+                    EngineeringInputLine(
+                        label = "Power factor:",
+                        value = powerFactor,
+                        unit = "",
+                        onValueChange = {
+                            powerFactor = it
+                        }
+                    )
+
+                    EngineeringInputLine(
+                        label = "Line length:",
+                        value = lineLength,
+                        unit = "m",
+                        onValueChange = {
+                            lineLength = it
+                        }
+                    )
+
+                    EngineeringDropdown(
+                        label = "Method of installation:",
+                        value =
+                            installationMethod.displayName(),
+                        options =
+                            InstallationMethod
+                                .values()
+                                .map {
+                                    it.displayName()
+                                },
+                        onSelected = { selected ->
+
                             installationMethod =
-                                installationMethod,
-                            onInstallationChange = {
-                                installationMethod = it
-                                selectedManualSize = null
-                                resultText = ""
-                                errorText = ""
-                            },
-                            ambientTemperature =
-                                ambientTemperature,
-                            onAmbientTemperatureChange = {
-                                ambientTemperature = it
-                                resultText = ""
-                                errorText = ""
-                            },
-                            circuitsInConduit =
-                                circuitsInConduit,
-                            onCircuitsChange = {
-                                circuitsInConduit = it
-                                resultText = ""
-                                errorText = ""
-                            }
-                        )
-                    }
+                                InstallationMethod
+                                    .values()
+                                    .first {
+                                        it.displayName() ==
+                                            selected
+                                    }
 
-                    Column(
+                            resultText = ""
+                            errorText = ""
+                            selectedManualSize = null
+                        }
+                    )
+
+                    EngineeringDropdown(
+                        label = "Ambient temperature:",
+                        value =
+                            "$ambientTemperature °C",
+                        options =
+                            listOf(
+                                20,
+                                25,
+                                30,
+                                35,
+                                40,
+                                45,
+                                50,
+                                55,
+                                60
+                            ).map {
+                                "$it °C"
+                            },
+                        onSelected = {
+
+                            ambientTemperature =
+                                it
+                                    .removeSuffix(
+                                        " °C"
+                                    )
+                                    .toInt()
+
+                            resultText = ""
+                            errorText = ""
+                        }
+                    )
+
+                    EngineeringDropdown(
+                        label = "Conductor:",
+                        value = material.displayName(),
+                        options =
+                            CableMaterial
+                                .values()
+                                .map {
+                                    it.displayName()
+                                },
+                        onSelected = { selected ->
+
+                            material =
+                                CableMaterial
+                                    .values()
+                                    .first {
+                                        it.displayName() ==
+                                            selected
+                                    }
+
+                            resultText = ""
+                            errorText = ""
+                            selectedManualSize = null
+                        }
+                    )
+
+                    EngineeringDropdown(
+                        label = "Insulation:",
+                        value = insulation.name,
+                        options =
+                            InsulationType
+                                .values()
+                                .map {
+                                    it.name
+                                },
+                        onSelected = {
+
+                            insulation =
+                                InsulationType
+                                    .valueOf(it)
+
+                            resultText = ""
+                            errorText = ""
+                            selectedManualSize = null
+                        }
+                    )
+
+                    EngineeringDropdown(
+                        label =
+                            "Circuits in the same conduit:",
+                        value =
+                            circuitsInConduit.toString(),
+                        options =
+                            (1..8).map {
+                                it.toString()
+                            },
+                        onSelected = {
+
+                            circuitsInConduit =
+                                it.toInt()
+
+                            resultText = ""
+                            errorText = ""
+                        }
+                    )
+
+                    EngineeringInputLine(
+                        label = "Max voltage drop:",
+                        value = maximumVoltageDrop,
+                        unit = "%",
+                        onValueChange = {
+                            maximumVoltageDrop = it
+                        }
+                    )
+
+                    Text(
+                        text = "Cable selection:",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
                         modifier =
-                            Modifier.weight(1f),
-                        verticalArrangement =
-                            Arrangement.spacedBy(12.dp)
+                            Modifier.padding(
+                                top = 8.dp
+                            )
+                    )
+
+                    Row(
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        verticalAlignment =
+                            Alignment.CenterVertically
                     ) {
 
-                        SelectionModeCard(
-                            engineerOverride =
-                                engineerOverride,
-                            onAutomatic = {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .clickable {
+                                        automaticSelection =
+                                            true
+                                        selectedManualSize =
+                                            null
+                                    }
+                                    .padding(
+                                        end = 24.dp
+                                    ),
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
 
-                                engineerOverride = false
-                                selectedManualSize = null
-                                resultText = ""
-                                errorText = ""
-                            },
-                            onEngineer = {
+                            RadioButton(
+                                selected =
+                                    automaticSelection,
+                                onClick = {
+                                    automaticSelection =
+                                        true
+                                    selectedManualSize =
+                                        null
+                                }
+                            )
 
-                                engineerOverride = true
-                                resultText = ""
-                                errorText = ""
-                            },
-                            selectedManualSize =
-                                selectedManualSize,
-                            availableCables =
-                                availableCables,
-                            onManualSizeChange = {
-                                selectedManualSize = it
-                                resultText = ""
-                                errorText = ""
-                            }
-                        )
+                            Text(
+                                text = "Automatic"
+                            )
+                        }
 
-                        CalculateCard(
-                            onCalculate = {
-                                calculateCable()
-                            }
-                        )
+                        Row(
+                            modifier =
+                                Modifier
+                                    .clickable {
+                                        automaticSelection =
+                                            false
+                                    },
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
 
-                        ResultCard(
-                            resultText = resultText,
-                            errorText = errorText
-                        )
+                            RadioButton(
+                                selected =
+                                    !automaticSelection,
+                                onClick = {
+                                    automaticSelection =
+                                        false
+                                }
+                            )
 
-                        CurrentProjectCableCard()
+                            Text(
+                                text = "Engineer"
+                            )
+                        }
                     }
+
+                    if (!automaticSelection) {
+
+                        EngineeringDropdown(
+                            label =
+                                "Engineer cable size:",
+                            value =
+                                selectedManualSize
+                                    ?.let {
+                                        "%.1f mm²"
+                                            .format(it)
+                                    }
+                                    ?: "Select cable size",
+                            options =
+                                availableCables.map {
+                                    "%.1f mm²"
+                                        .format(
+                                            it.sizeMm2
+                                        )
+                                },
+                            onSelected = { selected ->
+
+                                selectedManualSize =
+                                    selected
+                                        .removeSuffix(
+                                            " mm²"
+                                        )
+                                        .toDoubleOrNull()
+
+                                resultText = ""
+                                errorText = ""
+                            }
+                        )
+                    }
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(8.dp)
+                    )
+
+                    Button(
+                        onClick = {
+                            calculateCable()
+                        },
+                        modifier =
+                            Modifier
+                                .align(
+                                    Alignment.End
+                                )
+                                .width(240.dp)
+                    ) {
+
+                        Text(
+                            text =
+                                "CALCULATE",
+                            fontWeight =
+                                FontWeight.Bold
+                        )
+                    }
+
+                    if (
+                        errorText.isNotBlank()
+                    ) {
+
+                        Card(
+                            modifier =
+                                Modifier.fillMaxWidth(),
+                            colors =
+                                CardDefaults.cardColors(
+                                    containerColor =
+                                        MaterialTheme
+                                            .colorScheme
+                                            .errorContainer
+                                )
+                        ) {
+
+                            Text(
+                                text =
+                                    errorText,
+                                modifier =
+                                    Modifier.padding(
+                                        14.dp
+                                    ),
+                                color =
+                                    MaterialTheme
+                                        .colorScheme
+                                        .onErrorContainer,
+                                fontWeight =
+                                    FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    if (
+                        resultText.isNotBlank()
+                    ) {
+
+                        Card(
+                            modifier =
+                                Modifier.fillMaxWidth()
+                        ) {
+
+                            Column(
+                                modifier =
+                                    Modifier.padding(
+                                        16.dp
+                                    )
+                            ) {
+
+                                Text(
+                                    text =
+                                        "RESULT",
+                                    fontWeight =
+                                        FontWeight.Bold
+                                )
+
+                                Spacer(
+                                    modifier =
+                                        Modifier.height(
+                                            8.dp
+                                        )
+                                )
+
+                                Text(
+                                    text =
+                                        resultText
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(24.dp)
+                    )
                 }
-
-            } else {
-
-                DesignInputCard(
-                    designCurrent = designCurrent,
-                    onDesignCurrentChange = {
-                        designCurrent = it
-                    },
-                    loadKW = loadKW,
-                    onLoadChange = {
-                        loadKW = it
-                    },
-                    length = length,
-                    onLengthChange = {
-                        length = it
-                    },
-                    voltage = voltage,
-                    onVoltageChange = {
-                        voltage = it
-                    },
-                    powerFactor = powerFactor,
-                    onPowerFactorChange = {
-                        powerFactor = it
-                    },
-                    maximumVoltageDrop =
-                        maximumVoltageDrop,
-                    onMaximumVoltageDropChange = {
-                        maximumVoltageDrop = it
-                    },
-                    isThreePhase =
-                        isThreePhase,
-                    onThreePhaseChange = {
-                        isThreePhase = it
-                    }
-                )
-
-                CableDataCard(
-                    material = material,
-                    onMaterialChange = {
-                        material = it
-                        selectedManualSize = null
-                        resultText = ""
-                        errorText = ""
-                    },
-                    insulation = insulation,
-                    onInsulationChange = {
-                        insulation = it
-                        selectedManualSize = null
-                        resultText = ""
-                        errorText = ""
-                    },
-                    installationMethod =
-                        installationMethod,
-                    onInstallationChange = {
-                        installationMethod = it
-                        selectedManualSize = null
-                        resultText = ""
-                        errorText = ""
-                    },
-                    ambientTemperature =
-                        ambientTemperature,
-                    onAmbientTemperatureChange = {
-                        ambientTemperature = it
-                        resultText = ""
-                        errorText = ""
-                    },
-                    circuitsInConduit =
-                        circuitsInConduit,
-                    onCircuitsChange = {
-                        circuitsInConduit = it
-                        resultText = ""
-                        errorText = ""
-                    }
-                )
-
-                SelectionModeCard(
-                    engineerOverride =
-                        engineerOverride,
-                    onAutomatic = {
-
-                        engineerOverride = false
-                        selectedManualSize = null
-                        resultText = ""
-                        errorText = ""
-                    },
-                    onEngineer = {
-
-                        engineerOverride = true
-                        resultText = ""
-                        errorText = ""
-                    },
-                    selectedManualSize =
-                        selectedManualSize,
-                    availableCables =
-                        availableCables,
-                    onManualSizeChange = {
-                        selectedManualSize = it
-                        resultText = ""
-                        errorText = ""
-                    }
-                )
-
-                CalculateCard(
-                    onCalculate = {
-                        calculateCable()
-                    }
-                )
-
-                ResultCard(
-                    resultText = resultText,
-                    errorText = errorText
-                )
-
-                CurrentProjectCableCard()
             }
+        }
+    }
+}
 
-            Button(
-                onClick = onBack,
-                modifier =
-                    Modifier.fillMaxWidth()
-            ) {
-                Text("Back")
-            }
 
-            Spacer(
+/* ============================================================
+   TOP BAR
+   ============================================================ */
+
+@Composable
+private fun TopEngineeringBar(
+    onBack: () -> Unit
+) {
+
+    Surface(
+        modifier =
+            Modifier.fillMaxWidth(),
+        tonalElevation = 4.dp
+    ) {
+
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(64.dp)
+                    .padding(
+                        horizontal = 16.dp
+                    ),
+            verticalAlignment =
+                Alignment.CenterVertically
+        ) {
+
+            Text(
+                text = "☰",
+                fontSize = 25.sp,
                 modifier =
-                    Modifier.height(8.dp)
+                    Modifier.padding(
+                        end = 20.dp
+                    )
+            )
+
+            Text(
+                text =
+                    "Conductor sizing and protective device coordination",
+                fontSize = 18.sp,
+                fontWeight =
+                    FontWeight.Medium,
+                modifier =
+                    Modifier.weight(1f)
+            )
+
+            Text(
+                text = "⌕",
+                fontSize = 27.sp,
+                modifier =
+                    Modifier.padding(
+                        horizontal = 12.dp
+                    )
+            )
+
+            Text(
+                text = "f(x)",
+                fontSize = 17.sp,
+                fontWeight =
+                    FontWeight.Medium,
+                modifier =
+                    Modifier.padding(
+                        horizontal = 12.dp
+                    )
+            )
+
+            Text(
+                text = "ⓘ",
+                fontSize = 20.sp,
+                modifier =
+                    Modifier.padding(
+                        horizontal = 12.dp
+                    )
+            )
+
+            Text(
+                text = "⋮",
+                fontSize = 24.sp,
+                modifier =
+                    Modifier
+                        .clickable {
+                            onBack()
+                        }
+                        .padding(
+                            start = 12.dp
+                        )
             )
         }
     }
@@ -937,774 +1204,279 @@ fun CableSizingScreen(
 
 
 /* ============================================================
-   HEADER
+   SIDE MENU
    ============================================================ */
 
 @Composable
-private fun HeaderSection(
-    projectName: String
-) {
+private fun SideEngineeringMenu() {
 
     Column(
         modifier =
-            Modifier.fillMaxWidth(),
-        verticalArrangement =
-            Arrangement.spacedBy(4.dp)
+            Modifier
+                .width(235.dp)
+                .fillMaxHeight()
+                .background(
+                    MaterialTheme
+                        .colorScheme
+                        .surfaceVariant
+                )
+                .verticalScroll(
+                    rememberScrollState()
+                )
+    ) {
+
+        SideMenuItem(
+            icon = "⌂",
+            title = "Main",
+            selected = true
+        )
+
+        SideMenuItem(
+            icon = "▣",
+            title = "Motor",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "↔",
+            title = "Conversion",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "□",
+            title = "Resources",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "⇆",
+            title = "Pinout",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "▤",
+            title = "Formulas",
+            selected = false
+        )
+
+        HorizontalDivider()
+
+        SideMenuItem(
+            icon = "◉",
+            title = "Conductor sizing",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "▦",
+            title =
+                "Conductor sizing and protective device coordination",
+            selected = true
+        )
+
+        SideMenuItem(
+            icon = "ΔV",
+            title = "Calculation of voltage drop",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "A",
+            title = "Calculation of current",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "V",
+            title = "Calculation of voltage",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "W",
+            title = "Calculation of active power",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "VA",
+            title = "Calculation of apparent power",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "var",
+            title = "Calculation of reactive power",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "cosφ",
+            title = "Calculation of power factor",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "Ω",
+            title = "Calculation of resistance",
+            selected = false
+        )
+
+        SideMenuItem(
+            icon = "Z",
+            title = "Calculation of impedance",
+            selected = false
+        )
+    }
+}
+
+
+@Composable
+private fun SideMenuItem(
+    icon: String,
+    title: String,
+    selected: Boolean
+) {
+
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .background(
+                    if (selected) {
+                        MaterialTheme
+                            .colorScheme
+                            .primaryContainer
+                    } else {
+                        MaterialTheme
+                            .colorScheme
+                            .surfaceVariant
+                    }
+                )
+                .padding(
+                    horizontal = 14.dp,
+                    vertical = 12.dp
+                ),
+        verticalAlignment =
+            Alignment.CenterVertically
     ) {
 
         Text(
-            text = "CABLE SIZING",
-            style =
-                MaterialTheme.typography.headlineSmall,
+            text = icon,
+            modifier =
+                Modifier.width(38.dp),
             fontWeight =
                 FontWeight.Bold
         )
 
         Text(
-            text = "Professional Cable Selection",
-            style =
-                MaterialTheme.typography.bodyMedium
-        )
-
-        Text(
-            text = "Project: $projectName",
-            style =
-                MaterialTheme.typography.bodySmall
-        )
-
-        HorizontalDivider(
+            text = title,
+            fontSize = 14.sp,
             modifier =
-                Modifier.padding(
-                    top = 6.dp
-                )
+                Modifier.weight(1f)
         )
     }
 }
 
 
 /* ============================================================
-   DESIGN INPUT CARD
+   STANDARD TABS
    ============================================================ */
 
 @Composable
-private fun DesignInputCard(
-    designCurrent: String,
-    onDesignCurrentChange: (String) -> Unit,
-    loadKW: String,
-    onLoadChange: (String) -> Unit,
-    length: String,
-    onLengthChange: (String) -> Unit,
-    voltage: String,
-    onVoltageChange: (String) -> Unit,
-    powerFactor: String,
-    onPowerFactorChange: (String) -> Unit,
-    maximumVoltageDrop: String,
-    onMaximumVoltageDropChange: (String) -> Unit,
-    isThreePhase: Boolean,
-    onThreePhaseChange: (Boolean) -> Unit
-) {
+private fun StandardTabs() {
 
-    Card(
+    Row(
         modifier =
-            Modifier.fillMaxWidth(),
-        shape =
-            RoundedCornerShape(16.dp),
-        elevation =
-            CardDefaults.cardElevation(
-                defaultElevation = 2.dp
-            )
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    bottom = 8.dp
+                ),
+        horizontalArrangement =
+            Arrangement.SpaceEvenly
     ) {
 
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            verticalArrangement =
-                Arrangement.spacedBy(10.dp)
-        ) {
-
-            SectionTitle(
-                title = "DESIGN INPUTS"
-            )
-
-            OutlinedTextField(
-                value = designCurrent,
-                onValueChange =
-                    onDesignCurrentChange,
-                label = {
-                    Text(
-                        "Design Current Ib (A)"
-                    )
-                },
-                placeholder = {
-                    Text(
-                        "Optional - calculated from Load"
-                    )
-                },
-                singleLine = true,
-                modifier =
-                    Modifier.fillMaxWidth()
-            )
-
-            OutlinedTextField(
-                value = loadKW,
-                onValueChange =
-                    onLoadChange,
-                label = {
-                    Text("Load (kW)")
-                },
-                placeholder = {
-                    Text(
-                        "Used when Design Current is empty"
-                    )
-                },
-                singleLine = true,
-                modifier =
-                    Modifier.fillMaxWidth()
-            )
-
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                horizontalArrangement =
-                    Arrangement.spacedBy(10.dp)
-            ) {
-
-                OutlinedTextField(
-                    value = length,
-                    onValueChange =
-                        onLengthChange,
-                    label = {
-                        Text("Length (m)")
-                    },
-                    singleLine = true,
-                    modifier =
-                        Modifier.weight(1f)
-                )
-
-                OutlinedTextField(
-                    value = voltage,
-                    onValueChange =
-                        onVoltageChange,
-                    label = {
-                        Text("Voltage (V)")
-                    },
-                    singleLine = true,
-                    modifier =
-                        Modifier.weight(1f)
-                )
-            }
-
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                horizontalArrangement =
-                    Arrangement.spacedBy(10.dp)
-            ) {
-
-                OutlinedTextField(
-                    value = powerFactor,
-                    onValueChange =
-                        onPowerFactorChange,
-                    label = {
-                        Text("Power Factor")
-                    },
-                    singleLine = true,
-                    modifier =
-                        Modifier.weight(1f)
-                )
-
-                OutlinedTextField(
-                    value = maximumVoltageDrop,
-                    onValueChange =
-                        onMaximumVoltageDropChange,
-                    label = {
-                        Text("Max V-Drop (%)")
-                    },
-                    singleLine = true,
-                    modifier =
-                        Modifier.weight(1f)
-                )
-            }
+        listOf(
+            "IEC",
+            "CEI",
+            "NEC",
+            "CEC"
+        ).forEachIndexed { index, standard ->
 
             Text(
-                text = "CURRENT TYPE",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                horizontalArrangement =
-                    Arrangement.spacedBy(8.dp)
-            ) {
-
-                if (isThreePhase) {
-
-                    Button(
-                        onClick = {
-                            onThreePhaseChange(true)
-                        },
-                        modifier =
-                            Modifier.weight(1f)
-                    ) {
-                        Text("✓ 3 PHASE")
-                    }
-
-                    OutlinedButton(
-                        onClick = {
-                            onThreePhaseChange(false)
-                        },
-                        modifier =
-                            Modifier.weight(1f)
-                    ) {
-                        Text("1 PHASE")
-                    }
-
-                } else {
-
-                    OutlinedButton(
-                        onClick = {
-                            onThreePhaseChange(true)
-                        },
-                        modifier =
-                            Modifier.weight(1f)
-                    ) {
-                        Text("3 PHASE")
-                    }
-
-                    Button(
-                        onClick = {
-                            onThreePhaseChange(false)
-                        },
-                        modifier =
-                            Modifier.weight(1f)
-                    ) {
-                        Text("✓ 1 PHASE")
-                    }
-                }
-            }
-        }
-    }
-}
-
-
-/* ============================================================
-   CABLE DATA CARD
-   ============================================================ */
-
-@Composable
-private fun CableDataCard(
-    material: CableMaterial,
-    onMaterialChange: (CableMaterial) -> Unit,
-    insulation: InsulationType,
-    onInsulationChange: (InsulationType) -> Unit,
-    installationMethod: InstallationMethod,
-    onInstallationChange: (InstallationMethod) -> Unit,
-    ambientTemperature: Int,
-    onAmbientTemperatureChange: (Int) -> Unit,
-    circuitsInConduit: Int,
-    onCircuitsChange: (Int) -> Unit
-) {
-
-    Card(
-        modifier =
-            Modifier.fillMaxWidth(),
-        shape =
-            RoundedCornerShape(16.dp),
-        elevation =
-            CardDefaults.cardElevation(
-                defaultElevation = 2.dp
-            )
-    ) {
-
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            verticalArrangement =
-                Arrangement.spacedBy(10.dp)
-        ) {
-
-            SectionTitle(
-                title = "CABLE DATA"
-            )
-
-            EngineeringDropdown(
-                label = "Conductor",
-                value = material.name,
-                options =
-                    CableMaterial
-                        .values()
-                        .map {
-                            it.name
-                        },
-                onSelected = {
-                    onMaterialChange(
-                        CableMaterial.valueOf(it)
-                    )
-                }
-            )
-
-            EngineeringDropdown(
-                label = "Insulation",
-                value = insulation.name,
-                options =
-                    InsulationType
-                        .values()
-                        .map {
-                            it.name
-                        },
-                onSelected = {
-                    onInsulationChange(
-                        InsulationType.valueOf(it)
-                    )
-                }
-            )
-
-            EngineeringDropdown(
-                label = "Method of installation",
-                value =
-                    installationMethod.displayName(),
-                options =
-                    InstallationMethod
-                        .values()
-                        .map {
-                            it.displayName()
-                        },
-                onSelected = { selected ->
-
-                    val enumValue =
-                        InstallationMethod
-                            .values()
-                            .first {
-                                it.displayName() == selected
-                            }
-
-                    onInstallationChange(
-                        enumValue
-                    )
-                }
-            )
-
-            EngineeringDropdown(
-                label = "Ambient temperature",
-                value = "$ambientTemperature °C",
-                options =
-                    listOf(
-                        20,
-                        25,
-                        30,
-                        35,
-                        40,
-                        45,
-                        50,
-                        55,
-                        60
-                    ).map {
-                        "$it °C"
-                    },
-                onSelected = { selected ->
-
-                    onAmbientTemperatureChange(
-                        selected
-                            .removeSuffix(" °C")
-                            .toInt()
-                    )
-                }
-            )
-
-            EngineeringDropdown(
-                label = "Circuits in same conduit",
-                value =
-                    circuitsInConduit.toString(),
-                options =
-                    (1..8).map {
-                        it.toString()
-                    },
-                onSelected = {
-                    onCircuitsChange(
-                        it.toInt()
-                    )
-                }
-            )
-        }
-    }
-}
-
-
-/* ============================================================
-   SELECTION MODE CARD
-   ============================================================ */
-
-@Composable
-private fun SelectionModeCard(
-    engineerOverride: Boolean,
-    onAutomatic: () -> Unit,
-    onEngineer: () -> Unit,
-    selectedManualSize: Double?,
-    availableCables:
-        List<ProfessionalEngineeringCore.CableData>,
-    onManualSizeChange: (Double) -> Unit
-) {
-
-    Card(
-        modifier =
-            Modifier.fillMaxWidth(),
-        shape =
-            RoundedCornerShape(16.dp),
-        elevation =
-            CardDefaults.cardElevation(
-                defaultElevation = 2.dp
-            )
-    ) {
-
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            verticalArrangement =
-                Arrangement.spacedBy(10.dp)
-        ) {
-
-            SectionTitle(
-                title = "CABLE SELECTION"
-            )
-
-            Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                horizontalArrangement =
-                    Arrangement.spacedBy(8.dp)
-            ) {
-
-                if (!engineerOverride) {
-
-                    Button(
-                        onClick = onAutomatic,
-                        modifier =
-                            Modifier.weight(1f)
-                    ) {
-                        Text("✓ AUTOMATIC")
-                    }
-
-                    OutlinedButton(
-                        onClick = onEngineer,
-                        modifier =
-                            Modifier.weight(1f)
-                    ) {
-                        Text("ENGINEER")
-                    }
-
-                } else {
-
-                    OutlinedButton(
-                        onClick = onAutomatic,
-                        modifier =
-                            Modifier.weight(1f)
-                    ) {
-                        Text("AUTOMATIC")
-                    }
-
-                    Button(
-                        onClick = onEngineer,
-                        modifier =
-                            Modifier.weight(1f)
-                    ) {
-                        Text("✓ ENGINEER")
-                    }
-                }
-            }
-
-            if (engineerOverride) {
-
-                Text(
-                    text =
-                        "Engineer Override: select a verified catalog cable. The Professional Engineering Core will validate the selection.",
-                    style =
-                        MaterialTheme.typography.bodySmall
-                )
-
-                EngineeringDropdown(
-                    label = "Engineer Cable Size",
-                    value =
-                        selectedManualSize
-                            ?.let {
-                                "%.1f mm²".format(it)
-                            }
-                            ?: "Select cable size",
-                    options =
-                        availableCables.map {
-                            "%.1f mm²"
-                                .format(
-                                    it.sizeMm2
-                                )
-                        },
-                    onSelected = { value ->
-
-                        val size =
-                            value
-                                .removeSuffix(
-                                    " mm²"
-                                )
-                                .toDoubleOrNull()
-
-                        if (size != null) {
-                            onManualSizeChange(size)
-                        }
-                    }
-                )
-            }
-
-            Text(
-                text =
-                    "Verified catalog cables available: ${availableCables.size}",
-                style =
-                    MaterialTheme.typography.bodySmall
-            )
-        }
-    }
-}
-
-
-/* ============================================================
-   CALCULATE CARD
-   ============================================================ */
-
-@Composable
-private fun CalculateCard(
-    onCalculate: () -> Unit
-) {
-
-    Card(
-        modifier =
-            Modifier.fillMaxWidth(),
-        shape =
-            RoundedCornerShape(16.dp)
-    ) {
-
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp)
-        ) {
-
-            Button(
-                onClick = onCalculate,
-                modifier =
-                    Modifier.fillMaxWidth()
-            ) {
-
-                Text(
-                    text =
-                        "CALCULATE & SELECT CABLE",
-                    fontWeight =
+                text = standard,
+                fontSize = 15.sp,
+                fontWeight =
+                    if (index == 0) {
                         FontWeight.Bold
-                )
-            }
-        }
-    }
-}
-
-
-/* ============================================================
-   RESULT CARD
-   ============================================================ */
-
-@Composable
-private fun ResultCard(
-    resultText: String,
-    errorText: String
-) {
-
-    if (
-        resultText.isBlank() &&
-        errorText.isBlank()
-    ) {
-        return
-    }
-
-    Card(
-        modifier =
-            Modifier.fillMaxWidth(),
-        shape =
-            RoundedCornerShape(16.dp)
-    ) {
-
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            verticalArrangement =
-                Arrangement.spacedBy(8.dp)
-        ) {
-
-            SectionTitle(
-                title = "ENGINEERING RESULT"
-            )
-
-            if (errorText.isNotBlank()) {
-
-                Text(
-                    text = errorText,
-                    color =
-                        MaterialTheme
-                            .colorScheme
-                            .error,
-                    fontWeight =
-                        FontWeight.Bold
-                )
-            }
-
-            if (resultText.isNotBlank()) {
-
-                Text(
-                    text = resultText,
-                    style =
-                        MaterialTheme.typography.bodyMedium
-                )
-            }
-        }
-    }
-}
-
-
-/* ============================================================
-   CURRENT PROJECT CABLE
-   ============================================================ */
-
-@Composable
-private fun CurrentProjectCableCard() {
-
-    val stored =
-        ProjectManager.calculation
-
-    Card(
-        modifier =
-            Modifier.fillMaxWidth(),
-        shape =
-            RoundedCornerShape(16.dp)
-    ) {
-
-        Column(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-            verticalArrangement =
-                Arrangement.spacedBy(6.dp)
-        ) {
-
-            SectionTitle(
-                title = "CURRENT PROJECT CABLE"
-            )
-
-            ResultLine(
-                label = "Cable Size",
-                value =
-                    "%.1f mm²"
-                        .format(
-                            stored.cableSizeMm2
-                        )
-            )
-
-            ResultLine(
-                label = "Ampacity Iz",
-                value =
-                    "%.2f A"
-                        .format(
-                            stored.cableAmpacityA
-                        )
-            )
-
-            ResultLine(
-                label = "Length",
-                value =
-                    "%.2f m"
-                        .format(
-                            stored.cableLengthM
-                        )
-            )
-
-            ResultLine(
-                label = "Voltage Drop",
-                value =
-                    "%.2f V"
-                        .format(
-                            stored.voltageDropV
-                        )
-            )
-
-            ResultLine(
-                label = "Voltage Drop %",
-                value =
-                    "%.2f %%"
-                        .format(
-                            stored.voltageDropPercent
-                        )
-            )
-
-            ResultLine(
-                label = "Design Status",
-                value =
-                    stored.designStatus
+                    } else {
+                        FontWeight.Normal
+                    },
+                modifier =
+                    Modifier.padding(
+                        horizontal = 20.dp,
+                        vertical = 8.dp
+                    )
             )
         }
     }
+
+    HorizontalDivider()
 }
 
 
 /* ============================================================
-   GENERIC SECTION TITLE
+   ENGINEERING INPUT
    ============================================================ */
 
 @Composable
-private fun SectionTitle(
-    title: String
-) {
-
-    Text(
-        text = title,
-        style =
-            MaterialTheme.typography.titleMedium,
-        fontWeight =
-            FontWeight.Bold
-    )
-}
-
-
-/* ============================================================
-   RESULT LINE
-   ============================================================ */
-
-@Composable
-private fun ResultLine(
+private fun EngineeringInputLine(
     label: String,
-    value: String
+    value: String,
+    unit: String,
+    onValueChange: (String) -> Unit
 ) {
 
     Row(
         modifier =
             Modifier.fillMaxWidth(),
-        horizontalArrangement =
-            Arrangement.SpaceBetween
+        verticalAlignment =
+            Alignment.CenterVertically
     ) {
 
         Text(
             text = label,
-            fontWeight =
-                FontWeight.Medium
+            modifier =
+                Modifier.width(250.dp),
+            fontSize = 14.sp
         )
 
-        Text(
-            text = value
+        OutlinedTextField(
+            value = value,
+            onValueChange =
+                onValueChange,
+            singleLine = true,
+            modifier =
+                Modifier.weight(1f),
+            shape =
+                RoundedCornerShape(0.dp)
         )
+
+        if (unit.isNotBlank()) {
+
+            Text(
+                text = unit,
+                modifier =
+                    Modifier
+                        .width(55.dp)
+                        .padding(
+                            start = 10.dp
+                        )
+            )
+        }
     }
 }
 
@@ -1725,27 +1497,23 @@ private fun EngineeringDropdown(
         mutableStateOf(false)
     }
 
-    Column(
+    Row(
         modifier =
-            Modifier.fillMaxWidth()
+            Modifier.fillMaxWidth(),
+        verticalAlignment =
+            Alignment.CenterVertically
     ) {
 
         Text(
             text = label,
-            style =
-                MaterialTheme.typography.bodySmall,
-            fontWeight =
-                FontWeight.Medium
-        )
-
-        Spacer(
             modifier =
-                Modifier.height(4.dp)
+                Modifier.width(250.dp),
+            fontSize = 14.sp
         )
 
         Box(
             modifier =
-                Modifier.fillMaxWidth()
+                Modifier.weight(1f)
         ) {
 
             Surface(
@@ -1754,19 +1522,13 @@ private fun EngineeringDropdown(
                         .fillMaxWidth()
                         .clip(
                             RoundedCornerShape(
-                                8.dp
+                                0.dp
                             )
                         )
                         .clickable {
-
-                            expanded =
-                                !expanded
+                            expanded = !expanded
                         },
-                tonalElevation = 1.dp,
-                shape =
-                    RoundedCornerShape(
-                        8.dp
-                    )
+                tonalElevation = 0.dp
             ) {
 
                 Row(
@@ -1774,8 +1536,8 @@ private fun EngineeringDropdown(
                         Modifier
                             .fillMaxWidth()
                             .padding(
-                                horizontal = 14.dp,
-                                vertical = 15.dp
+                                horizontal = 12.dp,
+                                vertical = 12.dp
                             ),
                     horizontalArrangement =
                         Arrangement.SpaceBetween,
@@ -1785,10 +1547,7 @@ private fun EngineeringDropdown(
 
                     Text(
                         text = value,
-                        style =
-                            MaterialTheme
-                                .typography
-                                .bodyLarge
+                        fontSize = 14.sp
                     )
 
                     Text(
@@ -1798,7 +1557,7 @@ private fun EngineeringDropdown(
                             } else {
                                 "▼"
                             },
-                        fontSize = 13.sp
+                        fontSize = 11.sp
                     )
                 }
             }
@@ -1807,9 +1566,7 @@ private fun EngineeringDropdown(
                 expanded = expanded,
                 onDismissRequest = {
                     expanded = false
-                },
-                modifier =
-                    Modifier.fillMaxWidth()
+                }
             ) {
 
                 options.forEach { option ->
@@ -1835,70 +1592,45 @@ private fun EngineeringDropdown(
 
 
 /* ============================================================
-   INSTALLATION DISPLAY NAMES
+   DISPLAY HELPERS
    ============================================================ */
 
-private fun InstallationMethod.displayName():
-    String {
+private fun CableMaterial.displayName(): String {
+
+    return when (this) {
+
+        CableMaterial.COPPER ->
+            "Copper"
+
+        CableMaterial.ALUMINIUM ->
+            "Aluminium"
+    }
+}
+
+
+private fun InstallationMethod.displayName(): String {
 
     return when (this) {
 
         InstallationMethod.CONDUIT ->
-            "Conduit"
+            "1 - A1 / Conduit"
 
         InstallationMethod.TRUNKING ->
             "Trunking"
 
         InstallationMethod.CABLE_TRAY ->
-            "Cable Tray"
+            "Cable tray"
 
         InstallationMethod.CABLE_LADDER ->
-            "Cable Ladder"
+            "Cable ladder"
 
         InstallationMethod.FREE_AIR ->
-            "Free Air"
+            "Free air"
 
         InstallationMethod.DIRECT_BURIED ->
-            "Direct Buried"
+            "Direct buried"
 
         InstallationMethod.DUCT ->
             "Duct"
-    }
-}
-
-
-/* ============================================================
-   GROUPING FACTOR
-   ============================================================ */
-
-private fun groupingFactorForCircuits(
-    circuits: Int
-): Double {
-
-    return when {
-
-        circuits <= 1 ->
-            1.00
-
-        circuits == 2 ->
-            0.80
-
-        circuits == 3 ->
-            0.70
-
-        circuits == 4 ->
-            0.65
-
-        circuits == 5 ->
-            0.60
-
-        circuits == 6 ->
-            0.57
-
-        circuits == 7 ->
-            0.54
-
-        else ->
-            0.52
     }
 }
